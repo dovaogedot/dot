@@ -13,7 +13,8 @@ const HELP = `dot ${VERSION} — sync config files across hosts through a git re
 
 usage:
   dot bind <repo>     set the git remote that stores the config files
-  dot sync            pull, reconcile every tracked file with this host, push
+  dot sync [-f]       pull, reconcile every tracked file with this host, push;
+                        -f / --force keeps the host copy when both sides changed
   dot add <path>      track a file, or every file inside a directory
   dot remove <path>   stop tracking a file or directory (host copies stay)
   dot help            show this message
@@ -23,7 +24,7 @@ data lives in ~/.dot (override with DOT_HOME)`;
 const dispatch = (): Task<string, DotError> => {
   const [command, arg] = Deno.args;
   const extra = Deno.args.length > 2 ||
-    (Deno.args.length > 1 && (command === "sync" || command === "help"));
+    (Deno.args.length > 1 && command === "help");
   if (extra) {
     return Task.fail(usageError(`too many arguments — try: dot help`));
   }
@@ -33,7 +34,11 @@ const dispatch = (): Task<string, DotError> => {
         usageError("bind needs a repository URL — dot bind <repo>"),
       );
     case "sync":
-      return sync();
+      if (arg === undefined) return sync(false);
+      if (arg === "-f" || arg === "--force") return sync(true);
+      return Task.fail(
+        usageError("sync accepts only -f / --force — dot sync [-f]"),
+      );
     case "add":
       return arg !== undefined
         ? add(arg)

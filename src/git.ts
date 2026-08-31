@@ -50,6 +50,29 @@ export const git = (
     })
   );
 
+/** Runs git with inherited stdio for subcommands that drive the terminal; resolves to the exit code. */
+export const gitInteractive = (
+  cwd: string | null,
+  args: readonly string[],
+): Task<number, DotError> =>
+  Task.attempt(async () => {
+    const command = new Deno.Command("git", {
+      args: [...args],
+      cwd: cwd ?? undefined,
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const status = await command.spawn().status;
+    return status.code;
+  }, (u) => ({
+    kind: "git",
+    args,
+    message: u instanceof Deno.errors.NotFound
+      ? "git executable not found on PATH"
+      : describe(u),
+  }));
+
 /** Stages everything and commits if the tree changed; resolves to whether a commit was made. */
 export const commitIfChanged = (
   repo: string,

@@ -1,7 +1,7 @@
 /** dot sync: pull, reconcile every tracked file with the host, commit, push. */
 
 import { Task } from "../task.ts";
-import { configError, type DotError } from "../errors.ts";
+import { configError, type DotError, ioError } from "../errors.ts";
 import { contractTarget, expandTarget } from "../path.ts";
 import {
   hostLabel,
@@ -13,7 +13,13 @@ import {
   type SyncState,
 } from "../config.ts";
 import { copyFile, readBytesIfExists, sha256 } from "../fs.ts";
-import { commitIfChanged, git, gitRaw, pushBestEffort } from "../git.ts";
+import {
+  commitIfChanged,
+  git,
+  gitInteractive,
+  gitRaw,
+  pushBestEffort,
+} from "../git.ts";
 import { stat } from "../fs.ts";
 
 type Facts = {
@@ -25,14 +31,23 @@ type Facts = {
   readonly baseHash: string | null;
 };
 
-type Plan = "clean" | "toRepo" | "toHost" | "conflict" | "missing";
+/** What the three-way comparison detects for one tracked file. */
+type Detected = "clean" | "toRepo" | "toHost" | "conflict" | "missing";
 
 /**
- * Three-way comparison against the hash recorded at the last sync. When both
- * sides changed, the host copy wins: the repo copy stays in git history, while
- * an overwritten host copy would be gone for good.
+ * How one tracked file was handled. A both-sides-changed file resolves into
+ * "conflict" (host copy kept), "conflictRepo" (repo copy kept), "merged"
+ * (a diff tool left both sides identical), or "skipped" (both sides left
+ * untouched).
  */
-const decide = (f: Facts): Plan => {
+type Plan = Detected | "conflictRepo" | "merged" | "skipped";
+
+/**
+ * Three-way comparison against the hash recorded at the last sync: an
+ * unchanged side yields to the changed one; a change on both sides is a
+ * conflict.
+ */
+const decide = (f: Facts): Detected => {
   if (f.repoHash === null && f.hostHash === null) return "missing";
   if (f.repoHash === null) return "toRepo";
   if (f.hostHash === null) return "toHost";
@@ -80,25 +95,155 @@ type Outcome = {
   readonly hash: string | null;
 };
 
-const apply = (l: Layout, f: Facts): Task<Outcome, DotError> => {
-  const repoFile = l.filesDir + "/" + f.repoPath;
-  const plan = decide(f);
-  const done = (hash: string | null): Outcome => ({
+const outcomeFor =
+  (f: Facts) => (plan: Plan, hash: string | null): Outcome => ({
     plan,
     repoPath: f.repoPath,
     target: f.target,
     hash,
   });
-  switch (plan) {
+
+type Choice = "local" | "repo" | "tool" | "skip";
+
+const menu = (target: string): string =>
+  `conflict: ${target} changed both on this host and in the repo
+  [l] keep local — the host copy wins; the repo copy stays in git history
+  [r] keep repo  — overwrites the host copy
+  [d] resolve in diff tool (git difftool)
+  [s] skip — leave both sides as they are`;
+
+/**
+ * Reads one input line, one byte per read so nothing past the newline is
+ * consumed — a later prompt still sees lines the user typed or pasted ahead.
+ * Null at end of input.
+ */
+const readLine = (): string | null => {
+  const buf = new Uint8Array(1);
+  const bytes: number[] = [];
+  for (;;) {
+    const n = Deno.stdin.readSync(buf);
+    if (n === null) {
+      if (bytes.length === 0) return null;
+      break;
+    }
+    const b = buf[0];
+    if (n === 0 || b === undefined) continue;
+    if (b === 10) break;
+    if (b !== 13) bytes.push(b);
+  }
+  return new TextDecoder().decode(new Uint8Array(bytes));
+};
+
+/** Reads one resolution from the terminal; end of input counts as skip. */
+const askChoice = (target: string): Task<Choice, DotError> =>
+  Task.attempt(() => {
+    console.log(menu(target));
+    const ask = new TextEncoder().encode("choose [l/r/d/s]: ");
+    for (;;) {
+      Deno.stdout.writeSync(ask);
+      const raw = readLine();
+      if (raw === null) return Promise.resolve<Choice>("skip");
+      switch (raw.trim().toLowerCase()) {
+        case "l":
+        case "local":
+          return Promise.resolve<Choice>("local");
+        case "r":
+        case "repo":
+          return Promise.resolve<Choice>("repo");
+        case "d":
+        case "diff":
+        case "tool":
+          return Promise.resolve<Choice>("tool");
+        case "s":
+        case "skip":
+          return Promise.resolve<Choice>("skip");
+      }
+    }
+  }, (u) => ioError("prompt", target, u));
+
+/**
+ * Opens git difftool on the host and repo copies; resolves to their common
+ * hash when the tool leaves both sides identical, null otherwise.
+ */
+const mergeInTool = (
+  f: Facts,
+  repoFile: string,
+): Task<string | null, DotError> =>
+  gitInteractive(null, ["difftool", "-y", "--no-index", f.hostPath, repoFile])
+    .andThen(() => readBytesIfExists(f.hostPath))
+    .andThen((host) =>
+      readBytesIfExists(repoFile).andThen((repo) =>
+        host === null || repo === null
+          ? Task.of<string | null, DotError>(null)
+          : sha256(host).andThen((hostHash) =>
+            sha256(repo).map((repoHash): string | null =>
+              hostHash === repoHash ? hostHash : null
+            )
+          )
+      )
+    );
+
+/**
+ * A both-sides-changed file: --force keeps the host copy, a non-terminal
+ * stdin skips, and otherwise the user picks the resolution per file. The
+ * host copy is the only side git history cannot restore, so every path that
+ * discards it is an explicit choice.
+ */
+const resolveConflict = (
+  f: Facts,
+  repoFile: string,
+  force: boolean,
+): Task<Outcome, DotError> => {
+  const outcome = outcomeFor(f);
+  const keepLocal = copyFile(f.hostPath, repoFile).map(() =>
+    outcome("conflict", f.hostHash)
+  );
+  if (force) return keepLocal;
+  if (!Deno.stdin.isTerminal()) {
+    return Task.of(outcome("skipped", f.baseHash));
+  }
+  return askChoice(f.target).andThen((choice) => {
+    switch (choice) {
+      case "local":
+        return keepLocal;
+      case "repo":
+        return copyFile(repoFile, f.hostPath).map(() =>
+          outcome("conflictRepo", f.repoHash)
+        );
+      case "tool":
+        return mergeInTool(f, repoFile).andThen((merged) =>
+          merged === null
+            ? resolveConflict(f, repoFile, false)
+            : Task.of(outcome("merged", merged))
+        );
+      case "skip":
+        return Task.of(outcome("skipped", f.baseHash));
+    }
+  });
+};
+
+const apply = (
+  l: Layout,
+  force: boolean,
+  f: Facts,
+): Task<Outcome, DotError> => {
+  const repoFile = l.filesDir + "/" + f.repoPath;
+  const outcome = outcomeFor(f);
+  switch (decide(f)) {
     case "clean":
-      return Task.of(done(f.hostHash));
+      return Task.of(outcome("clean", f.hostHash));
     case "missing":
-      return Task.of(done(null));
+      return Task.of(outcome("missing", null));
     case "toHost":
-      return copyFile(repoFile, f.hostPath).map(() => done(f.repoHash));
+      return copyFile(repoFile, f.hostPath).map(() =>
+        outcome("toHost", f.repoHash)
+      );
     case "toRepo":
+      return copyFile(f.hostPath, repoFile).map(() =>
+        outcome("toRepo", f.hostHash)
+      );
     case "conflict":
-      return copyFile(f.hostPath, repoFile).map(() => done(f.hostHash));
+      return resolveConflict(f, repoFile, force);
   }
 };
 
@@ -113,6 +258,12 @@ const line = (o: Outcome, recover: string | null): string | null => {
     case "conflict":
       return `host -> repo  ${o.target} (both sides changed: host copy kept)` +
         (recover === null ? "" : `\n  overwritten repo copy: ${recover}`);
+    case "conflictRepo":
+      return `repo -> host  ${o.target} (both sides changed: repo copy kept, host copy overwritten)`;
+    case "merged":
+      return `merged        ${o.target} (diff tool result kept on both sides)`;
+    case "skipped":
+      return `skipped       ${o.target} (conflict unresolved; rerun dot sync, or -f to keep the host copy)`;
     case "missing":
       return `missing       ${o.target} (gone on host and in repo; dot remove to untrack)`;
   }
@@ -170,7 +321,7 @@ const summarize = (
   return lines.join("\n");
 };
 
-export const sync = (): Task<string, DotError> =>
+export const sync = (force: boolean): Task<string, DotError> =>
   Task.fromResult(layout()).andThen((l) =>
     requireBound(l)
       .andThen(() => git(l.repo, ["symbolic-ref", "--short", "HEAD"]))
@@ -183,7 +334,9 @@ export const sync = (): Task<string, DotError> =>
           return Task.traverse(
             entries,
             ([repoPath, target]) =>
-              gather(l, state, repoPath, target).andThen((f) => apply(l, f)),
+              gather(l, state, repoPath, target).andThen((f) =>
+                apply(l, force, f)
+              ),
           ).andThen((outcomes) => {
             const hashes: Record<string, string> = {};
             for (let i = 0; i < entries.length; i++) {
