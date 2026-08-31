@@ -71,7 +71,7 @@ const report = (
   ].join("\n");
 
 export const add = (raw: string): Task<string, DotError> =>
-  Task.fromResult(resolveLayout()).flatMap((layout) =>
+  resolveLayout().flatMap((layout) =>
     loadManifest(layout).flatMap((manifest) =>
       listFiles(layout, resolvePath(raw, layout.home)).flatMap((paths) =>
         Task.traverse(paths, (p) => trackOne(layout, p)).flatMap(

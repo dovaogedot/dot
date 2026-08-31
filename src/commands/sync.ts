@@ -326,7 +326,7 @@ const summarize = (
 export const sync = (
   force: boolean,
 ): Task<string, ConfigError | IoError | GitError> =>
-  Task.fromResult(resolveLayout()).flatMap((layout) =>
+  resolveLayout().flatMap((layout) =>
     requireBound(layout)
       .flatMap(() => git(layout.repo, ["symbolic-ref", "--short", "HEAD"]))
       .flatMap((branch) => pull(layout, branch))

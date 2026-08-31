@@ -14,7 +14,7 @@ import { removeIfExists } from "../fs.ts";
 import { commitIfChanged, pushBestEffort } from "../git.ts";
 
 export const remove = (raw: string): Task<string, DotError> =>
-  Task.fromResult(resolveLayout()).flatMap((layout) =>
+  resolveLayout().flatMap((layout) =>
     loadManifest(layout).flatMap((manifest): Task<string, DotError> => {
       const portable = contractTarget(
         resolvePath(raw, layout.home),

@@ -37,7 +37,7 @@ const clone = (layout: Layout, url: string): Task<string, IoError | GitError> =>
 export const bind = (
   url: string,
 ): Task<string, ConfigError | IoError | GitError> =>
-  Task.fromResult(resolveLayout()).flatMap((layout) =>
+  resolveLayout().flatMap((layout) =>
     stat(layout.repo + "/.git").flatMap((
       info,
     ): Task<string, IoError | GitError> =>

@@ -1,6 +1,6 @@
 /** Data-directory layout, the committed manifest, and the per-host sync state. */
 
-import { err, map, ok, type Result } from "./result.ts";
+import { err, ok, type Result } from "./result.ts";
 import { Task } from "./task.ts";
 import {
   type ConfigError,
@@ -25,8 +25,8 @@ export type Layout = {
   readonly statePath: string;
 };
 
-export const resolveLayout = (): Result<Layout, ConfigError> =>
-  map(homeDir(), (home) => {
+export const resolveLayout = (): Task<Layout, ConfigError> =>
+  Task.fromResult(homeDir()).map((home) => {
     const envRoot = envGet("DOT_HOME");
     const root = envRoot !== null && envRoot !== ""
       ? normalize(toSlash(envRoot))
