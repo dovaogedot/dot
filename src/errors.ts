@@ -1,5 +1,7 @@
 /** Typed failures surfaced by the CLI. */
 
+import { matchTag } from "./match.ts";
+
 export type DotError =
   | { readonly kind: "usage"; readonly message: string }
   | {
@@ -39,17 +41,11 @@ export const ioError = (
 export const describe = (u: unknown): string =>
   u instanceof Error ? u.message : String(u);
 
-export const renderError = (e: DotError): string => {
-  switch (e.kind) {
-    case "usage":
-      return `dot: ${e.message}`;
-    case "io":
-      return `dot: ${e.op} ${e.path}: ${e.message}`;
-    case "git":
-      return `dot: git ${e.args.join(" ")}\n  ${
-        e.message.split("\n").join("\n  ")
-      }`;
-    case "config":
-      return `dot: ${e.message}`;
-  }
-};
+export const renderError = (e: DotError): string =>
+  matchTag(e, {
+    usage: (u) => `dot: ${u.message}`,
+    io: (u) => `dot: ${u.op} ${u.path}: ${u.message}`,
+    git: (u) =>
+      `dot: git ${u.args.join(" ")}\n  ${u.message.split("\n").join("\n  ")}`,
+    config: (u) => `dot: ${u.message}`,
+  });

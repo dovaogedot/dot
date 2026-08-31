@@ -21,47 +21,52 @@ usage:
 
 data lives in ~/.dot (override with DOT_HOME)`;
 
+type Handler = (arg: string | undefined) => Task<string, DotError>;
+
+const requireArg = (
+  missing: string,
+  run: (arg: string) => Task<string, DotError>,
+): Handler =>
+(arg) =>
+  arg === undefined
+    ? Task.fail<DotError, string>(usageError(missing))
+    : run(arg);
+
+const showHelp: Handler = () => Task.of(HELP);
+const showVersion: Handler = () => Task.of(`dot ${VERSION}`);
+
+/** Alias keys share one handler per command. */
+const commands: Readonly<Record<string, Handler>> = {
+  bind: requireArg("bind needs a repository URL — dot bind <repo>", bind),
+  sync: (arg) =>
+    arg === undefined
+      ? sync(false)
+      : arg === "-f" || arg === "--force"
+      ? sync(true)
+      : Task.fail(usageError("sync accepts only -f / --force — dot sync [-f]")),
+  add: requireArg("add needs a path — dot add <path>", add),
+  remove: requireArg("remove needs a path — dot remove <path>", remove),
+  help: showHelp,
+  "--help": showHelp,
+  "-h": showHelp,
+  version: showVersion,
+  "--version": showVersion,
+};
+
 const dispatch = (): Task<string, DotError> => {
   const [command, arg] = Deno.args;
   const extra = Deno.args.length > 2 ||
     (Deno.args.length > 1 && command === "help");
   if (extra) {
-    return Task.fail(usageError(`too many arguments — try: dot help`));
+    return Task.fail(usageError("too many arguments — try: dot help"));
   }
-  switch (command) {
-    case "bind":
-      return arg !== undefined ? bind(arg) : Task.fail(
-        usageError("bind needs a repository URL — dot bind <repo>"),
-      );
-    case "sync":
-      if (arg === undefined) return sync(false);
-      if (arg === "-f" || arg === "--force") return sync(true);
-      return Task.fail(
-        usageError("sync accepts only -f / --force — dot sync [-f]"),
-      );
-    case "add":
-      return arg !== undefined
-        ? add(arg)
-        : Task.fail(usageError("add needs a path — dot add <path>"));
-    case "remove":
-      return arg !== undefined
-        ? remove(arg)
-        : Task.fail(usageError("remove needs a path — dot remove <path>"));
-    case undefined:
-    case "help":
-    case "--help":
-    case "-h":
-      return Task.of(HELP);
-    case "version":
-    case "--version":
-      return Task.of(`dot ${VERSION}`);
-    default:
-      return Task.fail(
-        usageError(
-          `unknown command ${JSON.stringify(command)} — try: dot help`,
-        ),
-      );
-  }
+  if (command === undefined) return showHelp(undefined);
+  const handler = commands[command];
+  return handler === undefined
+    ? Task.fail(
+      usageError(`unknown command ${JSON.stringify(command)} — try: dot help`),
+    )
+    : handler(arg);
 };
 
 const result = await dispatch().run();
