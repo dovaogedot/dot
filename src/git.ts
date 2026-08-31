@@ -1,7 +1,7 @@
 /** Git invocations wrapped as Tasks. Git is the only external dependency. */
 
 import { Task } from "./task.ts";
-import { describe, type DotError } from "./errors.ts";
+import { describe, type GitError } from "./errors.ts";
 
 export type GitOutput = {
   readonly code: number;
@@ -13,7 +13,7 @@ export type GitOutput = {
 export const gitRaw = (
   cwd: string | null,
   args: readonly string[],
-): Task<GitOutput, DotError> =>
+): Task<GitOutput, GitError> =>
   Task.attempt(async () => {
     const command = new Deno.Command("git", {
       args: [...args],
@@ -37,12 +37,9 @@ export const gitRaw = (
 export const git = (
   cwd: string | null,
   args: readonly string[],
-): Task<string, DotError> =>
-  gitRaw(cwd, args).andThen((out) =>
-    out.code === 0 ? Task.of<string, DotError>(out.stdout.trim()) : Task.fail<
-      DotError,
-      string
-    >({
+): Task<string, GitError> =>
+  gitRaw(cwd, args).andThen((out): Task<string, GitError> =>
+    out.code === 0 ? Task.of(out.stdout.trim()) : Task.fail({
       kind: "git",
       args,
       message: out.stderr.trim() || out.stdout.trim() ||
@@ -54,7 +51,7 @@ export const git = (
 export const gitInteractive = (
   cwd: string | null,
   args: readonly string[],
-): Task<number, DotError> =>
+): Task<number, GitError> =>
   Task.attempt(async () => {
     const command = new Deno.Command("git", {
       args: [...args],
@@ -77,23 +74,21 @@ export const gitInteractive = (
 export const commitIfChanged = (
   repo: string,
   message: string,
-): Task<boolean, DotError> =>
+): Task<boolean, GitError> =>
   git(repo, ["add", "-A"])
     .andThen(() => git(repo, ["status", "--porcelain"]))
-    .andThen((status) =>
-      status === "" ? Task.of<boolean, DotError>(false) : git(repo, [
-        "commit",
-        "-m",
-        message,
-      ]).map(() => true)
+    .andThen((status): Task<boolean, GitError> =>
+      status === ""
+        ? Task.of(false)
+        : git(repo, ["commit", "-m", message]).map(() => true)
     );
 
 /** Pushes HEAD to origin; a failure degrades to a warning line instead of an error. */
-export const pushBestEffort = (repo: string): Task<string | null, DotError> =>
+export const pushBestEffort = (repo: string): Task<string | null, never> =>
   git(repo, ["push", "origin", "HEAD"])
     .map((): string | null => null)
     .orElse((e) =>
-      Task.of<string | null, DotError>(
+      Task.of<string | null>(
         `warning: push failed, the commit stays local until the next sync: ${
           e.message.split("\n")[0] ?? ""
         }`,

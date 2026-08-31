@@ -4,7 +4,7 @@
  */
 
 import { err, ok, type Result } from "./result.ts";
-import { configError, type DotError } from "./errors.ts";
+import { type ConfigError, configError } from "./errors.ts";
 
 /** Reads an environment variable, treating a denied permission as unset. */
 export const envGet = (name: string): string | null => {
@@ -49,7 +49,7 @@ export const dirname = (p: string): string => {
   return p.slice(0, i);
 };
 
-export const homeDir = (): Result<string, DotError> => {
+export const homeDir = (): Result<string, ConfigError> => {
   const raw = envGet("HOME") ?? envGet("USERPROFILE");
   if (raw === null || raw === "") {
     return err(configError(

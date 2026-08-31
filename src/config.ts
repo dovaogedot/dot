@@ -2,7 +2,12 @@
 
 import { err, map, ok, type Result } from "./result.ts";
 import { Task } from "./task.ts";
-import { configError, describe, type DotError } from "./errors.ts";
+import {
+  type ConfigError,
+  configError,
+  describe,
+  type IoError,
+} from "./errors.ts";
 import { envGet, homeDir, normalize, toSlash } from "./path.ts";
 import { readTextIfExists, writeText } from "./fs.ts";
 
@@ -20,7 +25,7 @@ export type Layout = {
   readonly statePath: string;
 };
 
-export const layout = (): Result<Layout, DotError> =>
+export const layout = (): Result<Layout, ConfigError> =>
   map(homeDir(), (home) => {
     const envRoot = envGet("DOT_HOME");
     const root = envRoot !== null && envRoot !== ""
@@ -55,7 +60,7 @@ export const emptyState: SyncState = { version: 1, files: {} };
 const decodeDoc = (
   text: string,
   what: string,
-): Result<{ version: 1; files: Record<string, string> }, DotError> => {
+): Result<{ version: 1; files: Record<string, string> }, ConfigError> => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -75,28 +80,27 @@ const decodeDoc = (
   if (typeof files !== "object" || files === null || Array.isArray(files)) {
     return err(configError(`${what}: "files" must be an object`));
   }
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(files)) {
-    if (typeof value !== "string") {
-      return err(configError(
-        `${what}: entry ${JSON.stringify(key)} must map to a string path`,
-      ));
-    }
-    out[key] = value;
+  const entries = Object.entries(files);
+  const bad = entries.find(([, value]) => typeof value !== "string");
+  if (bad !== undefined) {
+    return err(configError(
+      `${what}: entry ${JSON.stringify(bad[0])} must map to a string path`,
+    ));
   }
-  return ok({ version: 1, files: out });
+  return ok({
+    version: 1,
+    files: Object.fromEntries(
+      entries.filter((e): e is [string, string] => typeof e[1] === "string"),
+    ),
+  });
 };
 
 const sortedFiles = (
   files: Readonly<Record<string, string>>,
-): Record<string, string> => {
-  const out: Record<string, string> = {};
-  for (const key of Object.keys(files).sort()) {
-    const value = files[key];
-    if (value !== undefined) out[key] = value;
-  }
-  return out;
-};
+): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(files).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0),
+  );
 
 const serialize = (doc: Manifest | SyncState): string =>
   JSON.stringify(
@@ -106,20 +110,23 @@ const serialize = (doc: Manifest | SyncState): string =>
   ) +
   "\n";
 
-export const loadManifest = (l: Layout): Task<Manifest, DotError> =>
-  readTextIfExists(l.manifestPath).andThen((text) =>
-    text === null
-      ? Task.fail<DotError, Manifest>(configError(
-        `no manifest at ${l.manifestPath} — run: dot bind <repo>`,
-      ))
-      : Task.fromResult(decodeDoc(text, "dot.json"))
+export const loadManifest = (
+  l: Layout,
+): Task<Manifest, IoError | ConfigError> =>
+  readTextIfExists(l.manifestPath).andThen(
+    (text): Task<Manifest, ConfigError> =>
+      text === null
+        ? Task.fail(configError(
+          `no manifest at ${l.manifestPath} — run: dot bind <repo>`,
+        ))
+        : Task.fromResult(decodeDoc(text, "dot.json")),
   );
 
-export const saveManifest = (l: Layout, m: Manifest): Task<void, DotError> =>
+export const saveManifest = (l: Layout, m: Manifest): Task<void, IoError> =>
   writeText(l.manifestPath, serialize(m));
 
 /** An unreadable or invalid state file degrades to the empty state: it is a cache. */
-export const loadState = (l: Layout): Task<SyncState, DotError> =>
+export const loadState = (l: Layout): Task<SyncState, never> =>
   readTextIfExists(l.statePath)
     .map((text) => {
       if (text === null) return emptyState;
@@ -128,7 +135,7 @@ export const loadState = (l: Layout): Task<SyncState, DotError> =>
     })
     .orElse(() => Task.of(emptyState));
 
-export const saveState = (l: Layout, s: SyncState): Task<void, DotError> =>
+export const saveState = (l: Layout, s: SyncState): Task<void, IoError> =>
   writeText(l.statePath, serialize(s));
 
 export const hostLabel = (): string => {

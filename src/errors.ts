@@ -2,36 +2,40 @@
 
 import { matchTag } from "./match.ts";
 
-export type DotError =
-  | { readonly kind: "usage"; readonly message: string }
-  | {
-    readonly kind: "io";
-    readonly op: string;
-    readonly path: string;
-    readonly message: string;
-  }
-  | {
-    readonly kind: "git";
-    readonly args: readonly string[];
-    readonly message: string;
-  }
-  | { readonly kind: "config"; readonly message: string };
+export type UsageError = { readonly kind: "usage"; readonly message: string };
 
-export const usageError = (message: string): DotError => ({
+export type IoError = {
+  readonly kind: "io";
+  readonly op: string;
+  readonly path: string;
+  readonly message: string;
+};
+
+export type GitError = {
+  readonly kind: "git";
+  readonly args: readonly string[];
+  readonly message: string;
+};
+
+export type ConfigError = {
+  readonly kind: "config";
+  readonly message: string;
+};
+
+/** The full union; each function signature carries only the variants it can produce. */
+export type DotError = UsageError | IoError | GitError | ConfigError;
+
+export const usageError = (message: string): UsageError => ({
   kind: "usage",
   message,
 });
 
-export const configError = (message: string): DotError => ({
+export const configError = (message: string): ConfigError => ({
   kind: "config",
   message,
 });
 
-export const ioError = (
-  op: string,
-  path: string,
-  cause: unknown,
-): DotError => ({
+export const ioError = (op: string, path: string, cause: unknown): IoError => ({
   kind: "io",
   op,
   path,

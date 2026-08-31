@@ -1,7 +1,12 @@
 /** dot add <path>: start tracking a file, or every file inside a directory. */
 
 import { Task } from "../task.ts";
-import { type DotError, usageError } from "../errors.ts";
+import {
+  type DotError,
+  type IoError,
+  type UsageError,
+  usageError,
+} from "../errors.ts";
 import { contractTarget, repoPathFor, resolvePath } from "../path.ts";
 import {
   type Layout,
@@ -21,82 +26,97 @@ type Added = {
   readonly hash: string;
 };
 
-const trackOne = (l: Layout, abs: string): Task<Added, DotError> => {
+const trackOne = (
+  l: Layout,
+  abs: string,
+): Task<Added, IoError | UsageError> => {
   const target = contractTarget(abs, l.home);
   const repoPath = repoPathFor(target);
   return copyFile(abs, l.filesDir + "/" + repoPath)
     .andThen(() => readBytesIfExists(abs))
-    .andThen((bytes) =>
+    .andThen((bytes): Task<Added, IoError | UsageError> =>
       bytes === null
-        ? Task.fail<DotError, Added>(usageError(`no such file: ${abs}`))
+        ? Task.fail(usageError(`no such file: ${abs}`))
         : sha256(bytes).map((hash) => ({ repoPath, target, hash }))
     );
 };
 
-const listFiles = (l: Layout, abs: string): Task<string[], DotError> =>
-  stat(abs).andThen((info) => {
+const listFiles = (
+  l: Layout,
+  abs: string,
+): Task<string[], IoError | UsageError> =>
+  stat(abs).andThen((info): Task<string[], IoError | UsageError> => {
     if (info === null) {
-      return Task.fail<DotError, string[]>(usageError(`no such path: ${abs}`));
+      return Task.fail(usageError(`no such path: ${abs}`));
     }
     if (abs === l.root || abs.startsWith(l.root + "/")) {
-      return Task.fail<DotError, string[]>(
+      return Task.fail(
         usageError(`cannot track dot's own data directory: ${abs}`),
       );
     }
-    return info.isDirectory
-      ? walkFiles(abs)
-      : Task.of<string[], DotError>([abs]);
+    return info.isDirectory ? walkFiles(abs) : Task.of<string[]>([abs]);
   });
 
 const report = (
   added: readonly Added[],
   skipped: readonly Added[],
   pushWarning: string | null,
-): string => {
-  const lines: string[] = [];
-  for (const a of added) lines.push(`tracking ${a.target}`);
-  for (const s of skipped) lines.push(`already tracked: ${s.target}`);
-  if (added.length > 0) {
-    lines.push(
-      pushWarning ?? `committed and pushed ${added.length} file(s)`,
-    );
-  }
-  return lines.join("\n");
-};
+): string =>
+  [
+    ...added.map((a) => `tracking ${a.target}`),
+    ...skipped.map((s) => `already tracked: ${s.target}`),
+    ...(added.length > 0
+      ? [pushWarning ?? `committed and pushed ${added.length} file(s)`]
+      : []),
+  ].join("\n");
 
 export const add = (raw: string): Task<string, DotError> =>
   Task.fromResult(layout()).andThen((l) =>
     loadManifest(l).andThen((manifest) =>
       listFiles(l, resolvePath(raw, l.home)).andThen((paths) =>
-        Task.traverse(paths, (p) => trackOne(l, p)).andThen((entries) => {
-          const skipped = entries.filter((e) =>
-            manifest.files[e.repoPath] !== undefined
-          );
-          const added = entries.filter((e) =>
-            manifest.files[e.repoPath] === undefined
-          );
-          if (added.length === 0) {
-            return Task.of<string, DotError>(report(added, skipped, null));
-          }
-          const files: Record<string, string> = { ...manifest.files };
-          for (const e of added) files[e.repoPath] = e.target;
-          const next: Manifest = { version: 1, files };
-          return saveManifest(l, next)
-            .andThen(() => loadState(l))
-            .andThen((state) => {
-              const hashes: Record<string, string> = { ...state.files };
-              for (const e of entries) hashes[e.repoPath] = e.hash;
-              return saveState(l, { version: 1, files: hashes });
-            })
-            .andThen(() =>
-              commitIfChanged(
-                l.repo,
-                `dot: add ${added.map((e) => e.target).join(", ")}`,
+        Task.traverse(paths, (p) => trackOne(l, p)).andThen(
+          (entries): Task<string, DotError> => {
+            const skipped = entries.filter((e) =>
+              manifest.files[e.repoPath] !== undefined
+            );
+            const added = entries.filter((e) =>
+              manifest.files[e.repoPath] === undefined
+            );
+            if (added.length === 0) {
+              return Task.of(report(added, skipped, null));
+            }
+            const next: Manifest = {
+              version: 1,
+              files: {
+                ...manifest.files,
+                ...Object.fromEntries(
+                  added.map((e) => [e.repoPath, e.target] as const),
+                ),
+              },
+            };
+            return saveManifest(l, next)
+              .andThen(() => loadState(l))
+              .andThen((state) =>
+                saveState(l, {
+                  version: 1,
+                  files: {
+                    ...state.files,
+                    ...Object.fromEntries(
+                      entries.map((e) => [e.repoPath, e.hash] as const),
+                    ),
+                  },
+                })
               )
-            )
-            .andThen(() => pushBestEffort(l.repo))
-            .map((warning) => report(added, skipped, warning));
-        })
+              .andThen(() =>
+                commitIfChanged(
+                  l.repo,
+                  `dot: add ${added.map((e) => e.target).join(", ")}`,
+                )
+              )
+              .andThen(() => pushBestEffort(l.repo))
+              .map((warning) => report(added, skipped, warning));
+          },
+        )
       )
     )
   );

@@ -1,7 +1,12 @@
 /** dot: sync config files across hosts through a git repository. */
 
 import { Task } from "./src/task.ts";
-import { type DotError, renderError, usageError } from "./src/errors.ts";
+import {
+  type DotError,
+  renderError,
+  type UsageError,
+  usageError,
+} from "./src/errors.ts";
 import { bind } from "./src/commands/bind.ts";
 import { sync } from "./src/commands/sync.ts";
 import { add } from "./src/commands/add.ts";
@@ -29,7 +34,7 @@ const requireArg = (
 ): Handler =>
 (arg) =>
   arg === undefined
-    ? Task.fail<DotError, string>(usageError(missing))
+    ? Task.fail<UsageError, string>(usageError(missing))
     : run(arg);
 
 const showHelp: Handler = () => Task.of(HELP);

@@ -37,20 +37,16 @@ export class Task<T, E> {
     });
   }
 
-  /** Maps each item to a task and runs them in order, short-circuiting on the first error. */
+  /** Maps each item to a task and chains them in order, short-circuiting on the first error. */
   static traverse<A, T, E>(
     items: readonly A[],
     f: (a: A) => Task<T, E>,
   ): Task<T[], E> {
-    return new Task(async () => {
-      const out: T[] = [];
-      for (const a of items) {
-        const r = await f(a).run();
-        if (!r.ok) return r;
-        out.push(r.value);
-      }
-      return ok(out);
-    });
+    return items.reduce(
+      (acc: Task<T[], E>, a) =>
+        acc.andThen((out) => f(a).map((t) => [...out, t])),
+      Task.of<T[], E>([]),
+    );
   }
 
   map<U>(f: (t: T) => U): Task<U, E> {
@@ -67,15 +63,17 @@ export class Task<T, E> {
     });
   }
 
-  andThen<U>(f: (t: T) => Task<U, E>): Task<U, E> {
-    return new Task(async () => {
+  /** Chains a dependent task; the error type widens to cover both steps. */
+  andThen<U, F>(f: (t: T) => Task<U, F>): Task<U, E | F> {
+    return new Task<U, E | F>(async (): Promise<Result<U, E | F>> => {
       const r = await this.thunk();
       return r.ok ? f(r.value).run() : r;
     });
   }
 
-  orElse(f: (e: E) => Task<T, E>): Task<T, E> {
-    return new Task(async () => {
+  /** Recovers from a failure; the error type narrows to what recovery can produce. */
+  orElse<F>(f: (e: E) => Task<T, F>): Task<T, F> {
+    return new Task<T, F>(async (): Promise<Result<T, F>> => {
       const r = await this.thunk();
       return r.ok ? r : f(r.error).run();
     });

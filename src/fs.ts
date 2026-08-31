@@ -1,10 +1,10 @@
 /** File-system effects wrapped as Tasks. */
 
 import { Task } from "./task.ts";
-import { type DotError, ioError } from "./errors.ts";
+import { type IoError, ioError } from "./errors.ts";
 import { dirname } from "./path.ts";
 
-export const stat = (path: string): Task<Deno.FileInfo | null, DotError> =>
+export const stat = (path: string): Task<Deno.FileInfo | null, IoError> =>
   Task.attempt(async () => {
     try {
       return await Deno.stat(path);
@@ -16,7 +16,7 @@ export const stat = (path: string): Task<Deno.FileInfo | null, DotError> =>
 
 export const readBytesIfExists = (
   path: string,
-): Task<Uint8Array | null, DotError> =>
+): Task<Uint8Array | null, IoError> =>
   Task.attempt(async () => {
     try {
       return await Deno.readFile(path);
@@ -28,17 +28,17 @@ export const readBytesIfExists = (
 
 export const readTextIfExists = (
   path: string,
-): Task<string | null, DotError> =>
+): Task<string | null, IoError> =>
   readBytesIfExists(path).map((b) =>
     b === null ? null : new TextDecoder().decode(b)
   );
 
-export const ensureDir = (path: string): Task<void, DotError> =>
+export const ensureDir = (path: string): Task<void, IoError> =>
   Task.attempt(async () => {
     await Deno.mkdir(path, { recursive: true });
   }, (u) => ioError("mkdir", path, u));
 
-export const writeText = (path: string, text: string): Task<void, DotError> =>
+export const writeText = (path: string, text: string): Task<void, IoError> =>
   ensureDir(dirname(path)).andThen(() =>
     Task.attempt(
       () => Deno.writeTextFile(path, text),
@@ -47,7 +47,7 @@ export const writeText = (path: string, text: string): Task<void, DotError> =>
   );
 
 /** Copies content and, on POSIX systems, the permission bits of the source. */
-export const copyFile = (src: string, dst: string): Task<void, DotError> =>
+export const copyFile = (src: string, dst: string): Task<void, IoError> =>
   ensureDir(dirname(dst)).andThen(() =>
     Task.attempt(
       () => Deno.copyFile(src, dst),
@@ -55,7 +55,7 @@ export const copyFile = (src: string, dst: string): Task<void, DotError> =>
     )
   );
 
-export const removeIfExists = (path: string): Task<void, DotError> =>
+export const removeIfExists = (path: string): Task<void, IoError> =>
   Task.attempt(async () => {
     try {
       await Deno.remove(path);
@@ -65,31 +65,31 @@ export const removeIfExists = (path: string): Task<void, DotError> =>
     }
   }, (u) => ioError("remove", path, u));
 
-/** Lists every regular file under dir, sorted; skips symlinks and ".git" trees. */
-export const walkFiles = (dir: string): Task<string[], DotError> =>
-  Task.attempt(async () => {
-    const out: string[] = [];
-    const visit = async (d: string): Promise<void> => {
-      for await (const entry of Deno.readDir(d)) {
-        if (entry.name === ".git") continue;
-        const p = d + "/" + entry.name;
-        if (entry.isDirectory) await visit(p);
-        else if (entry.isFile) out.push(p);
-      }
-    };
-    await visit(dir);
-    return out.sort();
-  }, (u) => ioError("walk", dir, u));
+const visit = (d: string): Promise<string[]> =>
+  Array.fromAsync(Deno.readDir(d)).then((entries) =>
+    Promise.all(
+      entries
+        .filter((e) => e.name !== ".git")
+        .map((e) =>
+          e.isDirectory
+            ? visit(d + "/" + e.name)
+            : Promise.resolve(e.isFile ? [d + "/" + e.name] : [])
+        ),
+    ).then((nested) => nested.flat())
+  );
 
-export const sha256 = (bytes: Uint8Array): Task<string, DotError> =>
+/** Lists every regular file under dir, sorted; skips symlinks and ".git" trees. */
+export const walkFiles = (dir: string): Task<string[], IoError> =>
+  Task.attempt(
+    () => visit(dir).then((files) => files.sort()),
+    (u) => ioError("walk", dir, u),
+  );
+
+export const sha256 = (bytes: Uint8Array): Task<string, IoError> =>
   Task.attempt(async () => {
-    const digest = await crypto.subtle.digest(
-      "SHA-256",
-      bytes as BufferSource,
-    );
-    let hex = "";
-    for (const b of new Uint8Array(digest)) {
-      hex += b.toString(16).padStart(2, "0");
-    }
-    return hex;
+    const digest = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
+    return Array.from(
+      new Uint8Array(digest),
+      (b) => b.toString(16).padStart(2, "0"),
+    ).join("");
   }, (u) => ioError("hash", "<memory>", u));

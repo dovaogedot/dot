@@ -15,33 +15,35 @@ import { commitIfChanged, pushBestEffort } from "../git.ts";
 
 export const remove = (raw: string): Task<string, DotError> =>
   Task.fromResult(layout()).andThen((l) =>
-    loadManifest(l).andThen((manifest) => {
+    loadManifest(l).andThen((manifest): Task<string, DotError> => {
       const portable = contractTarget(resolvePath(raw, l.home), l.home);
       const doomed = Object.entries(manifest.files).filter(([, target]) =>
         target === portable || target.startsWith(portable + "/")
       );
       if (doomed.length === 0) {
-        return Task.fail<DotError, string>(
-          usageError(`not tracked: ${portable}`),
-        );
+        return Task.fail(usageError(`not tracked: ${portable}`));
       }
-      const files: Record<string, string> = {};
-      for (const [repoPath, target] of Object.entries(manifest.files)) {
-        if (!doomed.some(([d]) => d === repoPath)) files[repoPath] = target;
-      }
+      const files = Object.fromEntries(
+        Object.entries(manifest.files).filter(([repoPath]) =>
+          !doomed.some(([d]) => d === repoPath)
+        ),
+      );
       return Task.traverse(
         doomed,
         ([repoPath]) => removeIfExists(l.filesDir + "/" + repoPath),
       )
         .andThen(() => saveManifest(l, { version: 1, files }))
         .andThen(() => loadState(l))
-        .andThen((state) => {
-          const hashes: Record<string, string> = {};
-          for (const [repoPath, hash] of Object.entries(state.files)) {
-            if (files[repoPath] !== undefined) hashes[repoPath] = hash;
-          }
-          return saveState(l, { version: 1, files: hashes });
-        })
+        .andThen((state) =>
+          saveState(l, {
+            version: 1,
+            files: Object.fromEntries(
+              Object.entries(state.files).filter(([repoPath]) =>
+                files[repoPath] !== undefined
+              ),
+            ),
+          })
+        )
         .andThen(() =>
           commitIfChanged(
             l.repo,
@@ -49,12 +51,11 @@ export const remove = (raw: string): Task<string, DotError> =>
           )
         )
         .andThen(() => pushBestEffort(l.repo))
-        .map((warning) => {
-          const lines = doomed.map(([, t]) =>
-            `untracked ${t} (host copy kept)`
-          );
-          lines.push(warning ?? "committed and pushed");
-          return lines.join("\n");
-        });
+        .map((warning) =>
+          [
+            ...doomed.map(([, t]) => `untracked ${t} (host copy kept)`),
+            warning ?? "committed and pushed",
+          ].join("\n")
+        );
     })
   );

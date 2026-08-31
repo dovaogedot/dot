@@ -1,7 +1,13 @@
 /** dot sync: pull, reconcile every tracked file with the host, commit, push. */
 
 import { Task } from "../task.ts";
-import { configError, type DotError, ioError } from "../errors.ts";
+import {
+  type ConfigError,
+  configError,
+  type GitError,
+  type IoError,
+  ioError,
+} from "../errors.ts";
 import { matchValue } from "../match.ts";
 import { contractTarget, expandTarget } from "../path.ts";
 import {
@@ -59,9 +65,9 @@ const decide = (f: Facts): Detected => {
 
 const hashOrNull = (
   bytes: Uint8Array | null,
-): Task<string | null, DotError> =>
+): Task<string | null, IoError> =>
   bytes === null
-    ? Task.of<string | null, DotError>(null)
+    ? Task.of<string | null>(null)
     : sha256(bytes).map((h): string | null => h);
 
 const gather = (
@@ -69,7 +75,7 @@ const gather = (
   state: SyncState,
   repoPath: string,
   target: string,
-): Task<Facts, DotError> => {
+): Task<Facts, IoError> => {
   const hostPath = expandTarget(target, l.home);
   return readBytesIfExists(hostPath).andThen((host) =>
     readBytesIfExists(l.filesDir + "/" + repoPath).andThen((repo) =>
@@ -149,7 +155,7 @@ const readLine = (): string | null => {
 };
 
 /** Reads one resolution from the terminal; end of input counts as skip. */
-const askChoice = (target: string): Task<Choice, DotError> =>
+const askChoice = (target: string): Task<Choice, IoError> =>
   Task.attempt(() => {
     console.log(menu(target));
     const ask = new TextEncoder().encode("choose [l/r/d/s]: ");
@@ -169,18 +175,19 @@ const askChoice = (target: string): Task<Choice, DotError> =>
 const mergeInTool = (
   f: Facts,
   repoFile: string,
-): Task<string | null, DotError> =>
+): Task<string | null, GitError | IoError> =>
   gitInteractive(null, ["difftool", "-y", "--no-index", f.hostPath, repoFile])
     .andThen(() => readBytesIfExists(f.hostPath))
     .andThen((host) =>
-      readBytesIfExists(repoFile).andThen((repo) =>
-        host === null || repo === null
-          ? Task.of<string | null, DotError>(null)
-          : sha256(host).andThen((hostHash) =>
-            sha256(repo).map((repoHash): string | null =>
-              hostHash === repoHash ? hostHash : null
-            )
-          )
+      readBytesIfExists(repoFile).andThen(
+        (repo): Task<string | null, IoError> =>
+          host === null || repo === null
+            ? Task.of<string | null>(null)
+            : sha256(host).andThen((hostHash) =>
+              sha256(repo).map((repoHash): string | null =>
+                hostHash === repoHash ? hostHash : null
+              )
+            ),
       )
     );
 
@@ -194,27 +201,29 @@ const resolveConflict = (
   f: Facts,
   repoFile: string,
   force: boolean,
-): Task<Outcome, DotError> => {
+): Task<Outcome, IoError | GitError> => {
   const outcome = outcomeFor(f);
   const keepLocal = copyFile(f.hostPath, repoFile).map(() =>
     outcome("conflict", f.hostHash)
   );
   if (force || !Deno.stdin.isTerminal()) return keepLocal;
-  return askChoice(f.target).andThen((choice) =>
-    matchValue(choice, {
-      local: () => keepLocal,
-      repo: () =>
-        copyFile(repoFile, f.hostPath).map(() =>
-          outcome("conflictRepo", f.repoHash)
-        ),
-      tool: () =>
-        mergeInTool(f, repoFile).andThen((merged) =>
-          merged === null
-            ? resolveConflict(f, repoFile, false)
-            : Task.of<Outcome, DotError>(outcome("merged", merged))
-        ),
-      skip: () => Task.of<Outcome, DotError>(outcome("skipped", f.baseHash)),
-    })
+  return askChoice(f.target).andThen(
+    (choice): Task<Outcome, IoError | GitError> =>
+      matchValue(choice, {
+        local: () => keepLocal,
+        repo: () =>
+          copyFile(repoFile, f.hostPath).map(() =>
+            outcome("conflictRepo", f.repoHash)
+          ),
+        tool: () =>
+          mergeInTool(f, repoFile).andThen(
+            (merged): Task<Outcome, IoError | GitError> =>
+              merged === null
+                ? resolveConflict(f, repoFile, false)
+                : Task.of<Outcome>(outcome("merged", merged)),
+          ),
+        skip: () => Task.of<Outcome>(outcome("skipped", f.baseHash)),
+      }),
   );
 };
 
@@ -222,12 +231,12 @@ const apply = (
   l: Layout,
   force: boolean,
   f: Facts,
-): Task<Outcome, DotError> => {
+): Task<Outcome, IoError | GitError> => {
   const repoFile = l.filesDir + "/" + f.repoPath;
   const outcome = outcomeFor(f);
   return matchValue(decide(f), {
-    clean: () => Task.of<Outcome, DotError>(outcome("clean", f.hostHash)),
-    missing: () => Task.of<Outcome, DotError>(outcome("missing", null)),
+    clean: () => Task.of<Outcome>(outcome("clean", f.hostHash)),
+    missing: () => Task.of<Outcome>(outcome("missing", null)),
     toHost: () =>
       copyFile(repoFile, f.hostPath).map(() => outcome("toHost", f.repoHash)),
     toRepo: () =>
@@ -255,14 +264,14 @@ const line = (o: Outcome, recover: string | null): string | null =>
   });
 
 /** Pulls with rebase; an empty remote (nothing pushed yet) counts as up to date. */
-const pull = (l: Layout, branch: string): Task<boolean, DotError> =>
+const pull = (l: Layout, branch: string): Task<boolean, GitError> =>
   gitRaw(l.repo, ["pull", "--rebase", "--autostash", "origin", branch])
-    .andThen((out) => {
-      if (out.code === 0) return Task.of<boolean, DotError>(true);
+    .andThen((out): Task<boolean, GitError> => {
+      if (out.code === 0) return Task.of(true);
       if (out.stderr.includes("couldn't find remote ref")) {
-        return Task.of<boolean, DotError>(false);
+        return Task.of(false);
       }
-      return Task.fail<DotError, boolean>({
+      return Task.fail({
         kind: "git",
         args: ["pull", "--rebase", "--autostash", "origin", branch],
         message: out.stderr.trim() || out.stdout.trim() ||
@@ -270,12 +279,10 @@ const pull = (l: Layout, branch: string): Task<boolean, DotError> =>
       });
     });
 
-const requireBound = (l: Layout): Task<Layout, DotError> =>
-  stat(l.repo + "/.git").andThen((info) =>
+const requireBound = (l: Layout): Task<Layout, IoError | ConfigError> =>
+  stat(l.repo + "/.git").andThen((info): Task<Layout, ConfigError> =>
     info === null
-      ? Task.fail<DotError, Layout>(
-        configError("not bound — run: dot bind <repo>"),
-      )
+      ? Task.fail(configError("not bound — run: dot bind <repo>"))
       : git(l.repo, ["remote", "get-url", "origin"]).mapErr(() =>
         configError("no remote configured — run: dot bind <repo>")
       ).map(() => l)
@@ -289,24 +296,26 @@ const summarize = (
   preSync: string | null,
 ): string => {
   const repoDisplay = contractTarget(l.repo, l.home);
-  const lines: string[] = [];
-  for (const o of outcomes) {
+  const fileLines = outcomes.flatMap((o) => {
     const spec = `${preSync}:files/${o.repoPath}`;
     const recover = o.plan === "conflict" && preSync !== null
       ? `git -C ${repoDisplay} show ${/\s/.test(spec) ? `"${spec}"` : spec}`
       : null;
     const rendered = line(o, recover);
-    if (rendered !== null) lines.push(rendered);
-  }
+    return rendered === null ? [] : [rendered];
+  });
   const clean = outcomes.filter((o) => o.plan === "clean").length;
-  if (clean > 0) lines.push(`up to date: ${clean} file(s)`);
-  if (outcomes.length === 0) lines.push("nothing tracked — dot add <path>");
-  if (pushWarning !== null) lines.push(pushWarning);
-  else if (committed) lines.push("pushed");
-  return lines.join("\n");
+  return [
+    ...fileLines,
+    ...(clean > 0 ? [`up to date: ${clean} file(s)`] : []),
+    ...(outcomes.length === 0 ? ["nothing tracked — dot add <path>"] : []),
+    ...(pushWarning !== null ? [pushWarning] : committed ? ["pushed"] : []),
+  ].join("\n");
 };
 
-export const sync = (force: boolean): Task<string, DotError> =>
+export const sync = (
+  force: boolean,
+): Task<string, ConfigError | IoError | GitError> =>
   Task.fromResult(layout()).andThen((l) =>
     requireBound(l)
       .andThen(() => git(l.repo, ["symbolic-ref", "--short", "HEAD"]))
@@ -323,13 +332,11 @@ export const sync = (force: boolean): Task<string, DotError> =>
                 apply(l, force, f)
               ),
           ).andThen((outcomes) => {
-            const hashes: Record<string, string> = {};
-            for (let i = 0; i < entries.length; i++) {
-              const entry = entries[i];
-              const outcome = outcomes[i];
-              if (entry === undefined || outcome === undefined) continue;
-              if (outcome.hash !== null) hashes[entry[0]] = outcome.hash;
-            }
+            const hashes = Object.fromEntries(
+              outcomes.flatMap((o) =>
+                o.hash === null ? [] : [[o.repoPath, o.hash] as const]
+              ),
+            );
             return saveState(l, { version: 1, files: hashes })
               .andThen(() =>
                 commitIfChanged(l.repo, `dot: sync from ${hostLabel()}`)
@@ -341,8 +348,8 @@ export const sync = (force: boolean): Task<string, DotError> =>
                     outcomes.some((o) => o.plan === "conflict")
                   ? git(l.repo, ["rev-parse", "--short", "HEAD^"])
                     .map((h): string | null => h)
-                    .orElse(() => Task.of<string | null, DotError>(null))
-                  : Task.of<string | null, DotError>(null);
+                    .orElse(() => Task.of<string | null>(null))
+                  : Task.of<string | null>(null);
                 return preSync.andThen((ref) =>
                   pushBestEffort(l.repo).map((warning) =>
                     summarize(l, outcomes, committed, warning, ref)
