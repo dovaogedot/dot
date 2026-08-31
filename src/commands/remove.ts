@@ -1,7 +1,7 @@
 /** dot remove <path>: stop tracking a file or directory; host copies stay in place. */
 
 import { Task } from "../task.ts";
-import { type DotError, usageError } from "../errors.ts";
+import { type DotError, UsageError } from "../errors.ts";
 import { contractTarget, resolvePath } from "../path.ts";
 import {
   loadManifest,
@@ -24,7 +24,7 @@ export const remove = (raw: string): Task<string, DotError> =>
         target === portable || target.startsWith(portable + "/")
       );
       if (doomed.length === 0) {
-        return Task.fail(usageError(`not tracked: ${portable}`));
+        return Task.fail(new UsageError(`not tracked: ${portable}`));
       }
       const files = Object.fromEntries(
         Object.entries(manifest.files).filter(([repoPath]) =>

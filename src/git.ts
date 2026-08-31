@@ -1,7 +1,7 @@
 /** Git invocations wrapped as Tasks. Git is the only external dependency. */
 
 import { Task } from "./task.ts";
-import { describe, type GitError } from "./errors.ts";
+import { describe, GitError } from "./errors.ts";
 
 export type GitOutput = {
   readonly code: number;
@@ -25,13 +25,13 @@ export const gitRaw = (
     const { code, stdout, stderr } = await command.output();
     const dec = new TextDecoder();
     return { code, stdout: dec.decode(stdout), stderr: dec.decode(stderr) };
-  }, (u) => ({
-    kind: "git",
-    args,
-    message: u instanceof Deno.errors.NotFound
-      ? "git executable not found on PATH"
-      : describe(u),
-  }));
+  }, (u) =>
+    new GitError(
+      args,
+      u instanceof Deno.errors.NotFound
+        ? "git executable not found on PATH"
+        : describe(u),
+    ));
 
 /** Runs git, failing on a non-zero exit; resolves to trimmed stdout. */
 export const git = (
@@ -39,12 +39,12 @@ export const git = (
   args: readonly string[],
 ): Task<string, GitError> =>
   gitRaw(cwd, args).flatMap((out): Task<string, GitError> =>
-    out.code === 0 ? Task.of(out.stdout.trim()) : Task.fail({
-      kind: "git",
-      args,
-      message: out.stderr.trim() || out.stdout.trim() ||
-        `exit code ${out.code}`,
-    })
+    out.code === 0 ? Task.of(out.stdout.trim()) : Task.fail(
+      new GitError(
+        args,
+        out.stderr.trim() || out.stdout.trim() || `exit code ${out.code}`,
+      ),
+    )
   );
 
 /** Runs git with inherited stdio for subcommands that drive the terminal; resolves to the exit code. */
@@ -62,13 +62,13 @@ export const gitInteractive = (
     });
     const status = await command.spawn().status;
     return status.code;
-  }, (u) => ({
-    kind: "git",
-    args,
-    message: u instanceof Deno.errors.NotFound
-      ? "git executable not found on PATH"
-      : describe(u),
-  }));
+  }, (u) =>
+    new GitError(
+      args,
+      u instanceof Deno.errors.NotFound
+        ? "git executable not found on PATH"
+        : describe(u),
+    ));
 
 /** Stages everything and commits if the tree changed; resolves to whether a commit was made. */
 export const commitIfChanged = (

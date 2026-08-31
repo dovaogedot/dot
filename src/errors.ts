@@ -2,45 +2,34 @@
 
 import { matchTag } from "./match.ts";
 
-export type UsageError = { readonly kind: "usage"; readonly message: string };
+export class UsageError {
+  readonly kind = "usage";
+  constructor(readonly message: string) {}
+}
 
-export type IoError = {
-  readonly kind: "io";
-  readonly op: string;
-  readonly path: string;
+export class IoError {
+  readonly kind = "io";
   readonly message: string;
-};
+  constructor(readonly op: string, readonly path: string, cause: unknown) {
+    this.message = describe(cause);
+  }
+}
 
-export type GitError = {
-  readonly kind: "git";
-  readonly args: readonly string[];
-  readonly message: string;
-};
+export class GitError {
+  readonly kind = "git";
+  constructor(
+    readonly args: readonly string[],
+    readonly message: string,
+  ) {}
+}
 
-export type ConfigError = {
-  readonly kind: "config";
-  readonly message: string;
-};
+export class ConfigError {
+  readonly kind = "config";
+  constructor(readonly message: string) {}
+}
 
 /** The full union; each function signature carries only the variants it can produce. */
 export type DotError = UsageError | IoError | GitError | ConfigError;
-
-export const usageError = (message: string): UsageError => ({
-  kind: "usage",
-  message,
-});
-
-export const configError = (message: string): ConfigError => ({
-  kind: "config",
-  message,
-});
-
-export const ioError = (op: string, path: string, cause: unknown): IoError => ({
-  kind: "io",
-  op,
-  path,
-  message: describe(cause),
-});
 
 export const describe = (u: unknown): string =>
   u instanceof Error ? u.message : String(u);

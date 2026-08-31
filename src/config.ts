@@ -1,13 +1,8 @@
 /** Data-directory layout, the committed manifest, and the per-host sync state. */
 
-import { err, ok, type Result } from "./result.ts";
+import { Err, Ok, type Result } from "./result.ts";
 import { Task } from "./task.ts";
-import {
-  type ConfigError,
-  configError,
-  describe,
-  type IoError,
-} from "./errors.ts";
+import { ConfigError, describe, type IoError } from "./errors.ts";
 import { envGet, homeDir, normalize, toSlash } from "./path.ts";
 import { readTextIfExists, writeText } from "./fs.ts";
 
@@ -65,29 +60,33 @@ const decodeDoc = (
   try {
     parsed = JSON.parse(text);
   } catch (u) {
-    return err(configError(`${what}: invalid JSON: ${describe(u)}`));
+    return new Err(new ConfigError(`${what}: invalid JSON: ${describe(u)}`));
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return err(configError(`${what}: must be a JSON object`));
+    return new Err(new ConfigError(`${what}: must be a JSON object`));
   }
   const doc = parsed as Record<string, unknown>;
   if (doc.version !== 1) {
-    return err(configError(
-      `${what}: unsupported version ${JSON.stringify(doc.version)}`,
-    ));
+    return new Err(
+      new ConfigError(
+        `${what}: unsupported version ${JSON.stringify(doc.version)}`,
+      ),
+    );
   }
   const files = doc.files;
   if (typeof files !== "object" || files === null || Array.isArray(files)) {
-    return err(configError(`${what}: "files" must be an object`));
+    return new Err(new ConfigError(`${what}: "files" must be an object`));
   }
   const entries = Object.entries(files);
   const bad = entries.find(([, value]) => typeof value !== "string");
   if (bad !== undefined) {
-    return err(configError(
-      `${what}: entry ${JSON.stringify(bad[0])} must map to a string path`,
-    ));
+    return new Err(
+      new ConfigError(
+        `${what}: entry ${JSON.stringify(bad[0])} must map to a string path`,
+      ),
+    );
   }
-  return ok({
+  return new Ok({
     version: 1,
     files: Object.fromEntries(
       entries.filter((e): e is [string, string] => typeof e[1] === "string"),
@@ -116,9 +115,11 @@ export const loadManifest = (
   readTextIfExists(layout.manifestPath).flatMap(
     (text): Task<Manifest, ConfigError> =>
       text === null
-        ? Task.fail(configError(
-          `no manifest at ${layout.manifestPath} — run: dot bind <repo>`,
-        ))
+        ? Task.fail(
+          new ConfigError(
+            `no manifest at ${layout.manifestPath} — run: dot bind <repo>`,
+          ),
+        )
         : Task.fromResult(decodeDoc(text, "dot.json")),
   );
 

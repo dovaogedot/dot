@@ -1,8 +1,13 @@
 /** Result: the outcome of a computation that can fail with a typed error. */
 
-export type Ok<T> = { readonly ok: true; readonly value: T };
-export type Err<E> = { readonly ok: false; readonly error: E };
-export type Result<T, E> = Ok<T> | Err<E>;
+export class Ok<T> {
+  readonly ok = true;
+  constructor(readonly value: T) {}
+}
 
-export const ok = <T>(value: T): Ok<T> => ({ ok: true, value });
-export const err = <E>(error: E): Err<E> => ({ ok: false, error });
+export class Err<E> {
+  readonly ok = false;
+  constructor(readonly error: E) {}
+}
+
+export type Result<T, E> = Ok<T> | Err<E>;

@@ -1,12 +1,7 @@
 /** dot add <path>: start tracking a file, or every file inside a directory. */
 
 import { Task } from "../task.ts";
-import {
-  type DotError,
-  type IoError,
-  type UsageError,
-  usageError,
-} from "../errors.ts";
+import { type DotError, type IoError, UsageError } from "../errors.ts";
 import { contractTarget, repoPathFor, resolvePath } from "../path.ts";
 import {
   type Layout,
@@ -36,7 +31,7 @@ const trackOne = (
     .flatMap(() => readBytesIfExists(abs))
     .flatMap((bytes): Task<Added, IoError | UsageError> =>
       bytes === null
-        ? Task.fail(usageError(`no such file: ${abs}`))
+        ? Task.fail(new UsageError(`no such file: ${abs}`))
         : sha256(bytes).map((hash) => ({ repoPath, target, hash }))
     );
 };
@@ -47,11 +42,11 @@ const listFiles = (
 ): Task<string[], IoError | UsageError> =>
   stat(abs).flatMap((info): Task<string[], IoError | UsageError> => {
     if (info === null) {
-      return Task.fail(usageError(`no such path: ${abs}`));
+      return Task.fail(new UsageError(`no such path: ${abs}`));
     }
     if (abs === layout.root || abs.startsWith(layout.root + "/")) {
       return Task.fail(
-        usageError(`cannot track dot's own data directory: ${abs}`),
+        new UsageError(`cannot track dot's own data directory: ${abs}`),
       );
     }
     return info.isDirectory ? walkFiles(abs) : Task.of<string[]>([abs]);

@@ -3,8 +3,8 @@
  * forward slashes everywhere; Windows file APIs accept them directly.
  */
 
-import { err, ok, type Result } from "./result.ts";
-import { type ConfigError, configError } from "./errors.ts";
+import { Err, Ok, type Result } from "./result.ts";
+import { ConfigError } from "./errors.ts";
 
 /** Reads an environment variable, treating a denied permission as unset. */
 export const envGet = (name: string): string | null => {
@@ -48,11 +48,13 @@ export const dirname = (path: string): string => {
 export const homeDir = (): Result<string, ConfigError> => {
   const raw = envGet("HOME") ?? envGet("USERPROFILE");
   if (raw === null || raw === "") {
-    return err(configError(
-      "cannot locate the home directory: HOME / USERPROFILE is unset or unreadable",
-    ));
+    return new Err(
+      new ConfigError(
+        "cannot locate the home directory: HOME / USERPROFILE is unset or unreadable",
+      ),
+    );
   }
-  return ok(normalize(toSlash(raw)));
+  return new Ok(normalize(toSlash(raw)));
 };
 
 /** Resolves user input to an absolute slash-separated path, expanding a leading "~". */

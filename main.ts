@@ -1,12 +1,7 @@
 /** dot: sync config files across hosts through a git repository. */
 
 import { Task } from "./src/task.ts";
-import {
-  type DotError,
-  renderError,
-  type UsageError,
-  usageError,
-} from "./src/errors.ts";
+import { type DotError, renderError, UsageError } from "./src/errors.ts";
 import { bind } from "./src/commands/bind.ts";
 import { sync } from "./src/commands/sync.ts";
 import { add } from "./src/commands/add.ts";
@@ -34,7 +29,7 @@ const requireArg = (
 ): Handler =>
 (arg) =>
   arg === undefined
-    ? Task.fail<UsageError, string>(usageError(missing))
+    ? Task.fail<UsageError, string>(new UsageError(missing))
     : run(arg);
 
 const showHelp: Handler = () => Task.of(HELP);
@@ -48,7 +43,9 @@ const commands: Readonly<Record<string, Handler>> = {
       ? sync(false)
       : arg === "-f" || arg === "--force"
       ? sync(true)
-      : Task.fail(usageError("sync accepts only -f / --force — dot sync [-f]")),
+      : Task.fail(
+        new UsageError("sync accepts only -f / --force — dot sync [-f]"),
+      ),
   add: requireArg("add needs a path — dot add <path>", add),
   remove: requireArg("remove needs a path — dot remove <path>", remove),
   help: showHelp,
@@ -63,13 +60,15 @@ const dispatch = (): Task<string, DotError> => {
   const extra = Deno.args.length > 2 ||
     (Deno.args.length > 1 && command === "help");
   if (extra) {
-    return Task.fail(usageError("too many arguments — try: dot help"));
+    return Task.fail(new UsageError("too many arguments — try: dot help"));
   }
   if (command === undefined) return showHelp(undefined);
   const handler = commands[command];
   return handler === undefined
     ? Task.fail(
-      usageError(`unknown command ${JSON.stringify(command)} — try: dot help`),
+      new UsageError(
+        `unknown command ${JSON.stringify(command)} — try: dot help`,
+      ),
     )
     : handler(arg);
 };

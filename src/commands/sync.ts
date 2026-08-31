@@ -1,13 +1,7 @@
 /** dot sync: pull, reconcile every tracked file with the host, commit, push. */
 
 import { Task } from "../task.ts";
-import {
-  type ConfigError,
-  configError,
-  type GitError,
-  type IoError,
-  ioError,
-} from "../errors.ts";
+import { ConfigError, GitError, IoError } from "../errors.ts";
 import { matchValue } from "../match.ts";
 import { contractTarget, expandTarget } from "../path.ts";
 import {
@@ -166,7 +160,7 @@ const askChoice = (target: string): Task<Choice, IoError> =>
       const choice = CHOICES[raw.trim().toLowerCase()];
       if (choice !== undefined) return Promise.resolve(choice);
     }
-  }, (u) => ioError("prompt", target, u));
+  }, (u) => new IoError("prompt", target, u));
 
 /**
  * Opens git difftool on the host and repo copies; resolves to their common
@@ -281,20 +275,20 @@ const pull = (layout: Layout, branch: string): Task<boolean, GitError> =>
       if (out.stderr.includes("couldn't find remote ref")) {
         return Task.of(false);
       }
-      return Task.fail({
-        kind: "git",
-        args: ["pull", "--rebase", "--autostash", "origin", branch],
-        message: out.stderr.trim() || out.stdout.trim() ||
-          `exit code ${out.code}`,
-      });
+      return Task.fail(
+        new GitError(
+          ["pull", "--rebase", "--autostash", "origin", branch],
+          out.stderr.trim() || out.stdout.trim() || `exit code ${out.code}`,
+        ),
+      );
     });
 
 const requireBound = (layout: Layout): Task<Layout, IoError | ConfigError> =>
   stat(layout.repo + "/.git").flatMap((info): Task<Layout, ConfigError> =>
     info === null
-      ? Task.fail(configError("not bound — run: dot bind <repo>"))
+      ? Task.fail(new ConfigError("not bound — run: dot bind <repo>"))
       : git(layout.repo, ["remote", "get-url", "origin"]).mapErr(() =>
-        configError("no remote configured — run: dot bind <repo>")
+        new ConfigError("no remote configured — run: dot bind <repo>")
       ).map(() => layout)
   );
 

@@ -1,7 +1,7 @@
 /** File-system effects wrapped as Tasks. */
 
 import { Task } from "./task.ts";
-import { type IoError, ioError } from "./errors.ts";
+import { IoError } from "./errors.ts";
 import { dirname } from "./path.ts";
 
 export const stat = (path: string): Task<Deno.FileInfo | null, IoError> =>
@@ -12,7 +12,7 @@ export const stat = (path: string): Task<Deno.FileInfo | null, IoError> =>
       if (u instanceof Deno.errors.NotFound) return null;
       throw u;
     }
-  }, (u) => ioError("stat", path, u));
+  }, (u) => new IoError("stat", path, u));
 
 export const readBytesIfExists = (
   path: string,
@@ -24,7 +24,7 @@ export const readBytesIfExists = (
       if (u instanceof Deno.errors.NotFound) return null;
       throw u;
     }
-  }, (u) => ioError("read", path, u));
+  }, (u) => new IoError("read", path, u));
 
 export const readTextIfExists = (
   path: string,
@@ -36,13 +36,13 @@ export const readTextIfExists = (
 export const ensureDir = (path: string): Task<void, IoError> =>
   Task.attempt(async () => {
     await Deno.mkdir(path, { recursive: true });
-  }, (u) => ioError("mkdir", path, u));
+  }, (u) => new IoError("mkdir", path, u));
 
 export const writeText = (path: string, text: string): Task<void, IoError> =>
   ensureDir(dirname(path)).flatMap(() =>
     Task.attempt(
       () => Deno.writeTextFile(path, text),
-      (u) => ioError("write", path, u),
+      (u) => new IoError("write", path, u),
     )
   );
 
@@ -51,7 +51,7 @@ export const copyFile = (src: string, dst: string): Task<void, IoError> =>
   ensureDir(dirname(dst)).flatMap(() =>
     Task.attempt(
       () => Deno.copyFile(src, dst),
-      (u) => ioError("copy", `${src} -> ${dst}`, u),
+      (u) => new IoError("copy", `${src} -> ${dst}`, u),
     )
   );
 
@@ -63,7 +63,7 @@ export const removeIfExists = (path: string): Task<void, IoError> =>
       if (u instanceof Deno.errors.NotFound) return;
       throw u;
     }
-  }, (u) => ioError("remove", path, u));
+  }, (u) => new IoError("remove", path, u));
 
 const visit = (dir: string): Promise<string[]> =>
   Array.fromAsync(Deno.readDir(dir)).then((entries) =>
@@ -82,7 +82,7 @@ const visit = (dir: string): Promise<string[]> =>
 export const walkFiles = (dir: string): Task<string[], IoError> =>
   Task.attempt(
     () => visit(dir).then((files) => files.sort()),
-    (u) => ioError("walk", dir, u),
+    (u) => new IoError("walk", dir, u),
   );
 
 export const sha256 = (bytes: Uint8Array): Task<string, IoError> =>
@@ -92,4 +92,4 @@ export const sha256 = (bytes: Uint8Array): Task<string, IoError> =>
       new Uint8Array(digest),
       (b) => b.toString(16).padStart(2, "0"),
     ).join("");
-  }, (u) => ioError("hash", "<memory>", u));
+  }, (u) => new IoError("hash", "<memory>", u));

@@ -4,7 +4,7 @@
  * performs no effects; only `run()` executes the description.
  */
 
-import { err, ok, type Result } from "./result.ts";
+import { Err, Ok, type Result } from "./result.ts";
 
 export class Task<T, E> {
   private constructor(
@@ -12,11 +12,11 @@ export class Task<T, E> {
   ) {}
 
   static of<T, E = never>(value: T): Task<T, E> {
-    return new Task(() => Promise.resolve(ok(value)));
+    return new Task(() => Promise.resolve(new Ok(value)));
   }
 
   static fail<E, T = never>(error: E): Task<T, E> {
-    return new Task(() => Promise.resolve(err(error)));
+    return new Task(() => Promise.resolve(new Err(error)));
   }
 
   static fromResult<T, E>(r: Result<T, E>): Task<T, E> {
@@ -30,9 +30,9 @@ export class Task<T, E> {
   ): Task<T, E> {
     return new Task(async () => {
       try {
-        return ok(await effect());
+        return new Ok(await effect());
       } catch (u) {
-        return err(onThrow(u));
+        return new Err(onThrow(u));
       }
     });
   }
@@ -52,14 +52,14 @@ export class Task<T, E> {
   map<U>(f: (t: T) => U): Task<U, E> {
     return new Task(async () => {
       const result = await this.thunk();
-      return result.ok ? ok(f(result.value)) : result;
+      return result.ok ? new Ok(f(result.value)) : result;
     });
   }
 
   mapErr<F>(f: (e: E) => F): Task<T, F> {
     return new Task(async () => {
       const result = await this.thunk();
-      return result.ok ? result : err(f(result.error));
+      return result.ok ? result : new Err(f(result.error));
     });
   }
 
