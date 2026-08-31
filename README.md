@@ -23,8 +23,9 @@ dot remove ~/.bashrc                      # untrack (the host copy stays)
 - Pulls the repo, then compares each tracked file on the host with the repo
   copy, using the content hash recorded at the previous sync to tell which side
   changed.
-- One side changed: that side wins. Both sides changed: the host copy wins and
-  the repo copy stays in git history.
+- One side changed: that side wins. Both sides changed: the host copy wins, and
+  the sync prints the git command that retrieves the overwritten repo copy from
+  history.
 - Missing on the host: installed from the repo. Anything the host changed is
   committed and pushed, so the repo holds the latest state of every host.
 

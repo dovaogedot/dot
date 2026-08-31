@@ -2,7 +2,7 @@
 
 import { Task } from "../task.ts";
 import { configError, type DotError } from "../errors.ts";
-import { expandTarget } from "../path.ts";
+import { contractTarget, expandTarget } from "../path.ts";
 import {
   hostLabel,
   type Layout,
@@ -74,6 +74,7 @@ const gather = (
 
 type Outcome = {
   readonly plan: Plan;
+  readonly repoPath: string;
   readonly target: string;
   /** Hash both sides hold after the action; null drops the state entry. */
   readonly hash: string | null;
@@ -82,28 +83,26 @@ type Outcome = {
 const apply = (l: Layout, f: Facts): Task<Outcome, DotError> => {
   const repoFile = l.filesDir + "/" + f.repoPath;
   const plan = decide(f);
+  const done = (hash: string | null): Outcome => ({
+    plan,
+    repoPath: f.repoPath,
+    target: f.target,
+    hash,
+  });
   switch (plan) {
     case "clean":
-      return Task.of({ plan, target: f.target, hash: f.hostHash });
+      return Task.of(done(f.hostHash));
     case "missing":
-      return Task.of({ plan, target: f.target, hash: null });
+      return Task.of(done(null));
     case "toHost":
-      return copyFile(repoFile, f.hostPath).map(() => ({
-        plan,
-        target: f.target,
-        hash: f.repoHash,
-      }));
+      return copyFile(repoFile, f.hostPath).map(() => done(f.repoHash));
     case "toRepo":
     case "conflict":
-      return copyFile(f.hostPath, repoFile).map(() => ({
-        plan,
-        target: f.target,
-        hash: f.hostHash,
-      }));
+      return copyFile(f.hostPath, repoFile).map(() => done(f.hostHash));
   }
 };
 
-const line = (o: Outcome): string | null => {
+const line = (o: Outcome, recover: string | null): string | null => {
   switch (o.plan) {
     case "clean":
       return null;
@@ -112,7 +111,8 @@ const line = (o: Outcome): string | null => {
     case "toHost":
       return `repo -> host  ${o.target}`;
     case "conflict":
-      return `host -> repo  ${o.target} (both sides changed: host copy kept, repo copy is in git history)`;
+      return `host -> repo  ${o.target} (both sides changed: host copy kept)` +
+        (recover === null ? "" : `\n  overwritten repo copy: ${recover}`);
     case "missing":
       return `missing       ${o.target} (gone on host and in repo; dot remove to untrack)`;
   }
@@ -146,14 +146,21 @@ const requireBound = (l: Layout): Task<Layout, DotError> =>
   );
 
 const summarize = (
+  l: Layout,
   outcomes: readonly Outcome[],
   committed: boolean,
   pushWarning: string | null,
+  preSync: string | null,
 ): string => {
+  const repoDisplay = contractTarget(l.repo, l.home);
   const lines: string[] = [];
   for (const o of outcomes) {
-    const l = line(o);
-    if (l !== null) lines.push(l);
+    const spec = `${preSync}:files/${o.repoPath}`;
+    const recover = o.plan === "conflict" && preSync !== null
+      ? `git -C ${repoDisplay} show ${/\s/.test(spec) ? `"${spec}"` : spec}`
+      : null;
+    const rendered = line(o, recover);
+    if (rendered !== null) lines.push(rendered);
   }
   const clean = outcomes.filter((o) => o.plan === "clean").length;
   if (clean > 0) lines.push(`up to date: ${clean} file(s)`);
@@ -189,11 +196,21 @@ export const sync = (): Task<string, DotError> =>
               .andThen(() =>
                 commitIfChanged(l.repo, `dot: sync from ${hostLabel()}`)
               )
-              .andThen((committed) =>
-                pushBestEffort(l.repo).map((warning) =>
-                  summarize(outcomes, committed, warning)
-                )
-              );
+              .andThen((committed) => {
+                // The sync commit's parent holds the repo copies that conflicts
+                // overwrote; its hash pins the printed retrieval command.
+                const preSync = committed &&
+                    outcomes.some((o) => o.plan === "conflict")
+                  ? git(l.repo, ["rev-parse", "--short", "HEAD^"])
+                    .map((h): string | null => h)
+                    .orElse(() => Task.of<string | null, DotError>(null))
+                  : Task.of<string | null, DotError>(null);
+                return preSync.andThen((ref) =>
+                  pushBestEffort(l.repo).map((warning) =>
+                    summarize(l, outcomes, committed, warning, ref)
+                  )
+                );
+              });
           });
         })
       )
