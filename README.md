@@ -25,9 +25,9 @@ dot remove ~/.bashrc                      # untrack (the host copy stays)
   changed.
 - One side changed: that side wins. Both sides changed: dot asks per file — keep
   the local copy, keep the repo copy, resolve in `git difftool`, or skip. `-f` /
-  `--force` keeps the local copy without asking; without a terminal, conflicts
-  are skipped. A kept local copy overwrites the repo copy, which stays in git
-  history — the sync prints the command that retrieves it.
+  `--force` keeps the local copy without asking, and a non-terminal stdin
+  behaves like `--force`. A kept local copy overwrites the repo copy, which
+  stays in git history — the sync prints the command that retrieves it.
 - Missing on the host: installed from the repo. Anything the host changed is
   committed and pushed, so the repo holds the latest state of every host.
 

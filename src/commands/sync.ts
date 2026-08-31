@@ -2,6 +2,7 @@
 
 import { Task } from "../task.ts";
 import { configError, type DotError, ioError } from "../errors.ts";
+import { matchValue } from "../match.ts";
 import { contractTarget, expandTarget } from "../path.ts";
 import {
   hostLabel,
@@ -12,7 +13,7 @@ import {
   saveState,
   type SyncState,
 } from "../config.ts";
-import { copyFile, readBytesIfExists, sha256 } from "../fs.ts";
+import { copyFile, readBytesIfExists, sha256, stat } from "../fs.ts";
 import {
   commitIfChanged,
   git,
@@ -20,7 +21,6 @@ import {
   gitRaw,
   pushBestEffort,
 } from "../git.ts";
-import { stat } from "../fs.ts";
 
 type Facts = {
   readonly repoPath: string;
@@ -103,7 +103,21 @@ const outcomeFor =
     hash,
   });
 
-type Choice = "local" | "repo" | "tool" | "skip";
+const CHOICE_BY_INPUT = {
+  l: "local",
+  local: "local",
+  r: "repo",
+  repo: "repo",
+  d: "tool",
+  diff: "tool",
+  tool: "tool",
+  s: "skip",
+  skip: "skip",
+} as const;
+
+type Choice = (typeof CHOICE_BY_INPUT)[keyof typeof CHOICE_BY_INPUT];
+
+const CHOICES: Readonly<Record<string, Choice>> = CHOICE_BY_INPUT;
 
 const menu = (target: string): string =>
   `conflict: ${target} changed both on this host and in the repo
@@ -143,21 +157,8 @@ const askChoice = (target: string): Task<Choice, DotError> =>
       Deno.stdout.writeSync(ask);
       const raw = readLine();
       if (raw === null) return Promise.resolve<Choice>("skip");
-      switch (raw.trim().toLowerCase()) {
-        case "l":
-        case "local":
-          return Promise.resolve<Choice>("local");
-        case "r":
-        case "repo":
-          return Promise.resolve<Choice>("repo");
-        case "d":
-        case "diff":
-        case "tool":
-          return Promise.resolve<Choice>("tool");
-        case "s":
-        case "skip":
-          return Promise.resolve<Choice>("skip");
-      }
+      const choice = CHOICES[raw.trim().toLowerCase()];
+      if (choice !== undefined) return Promise.resolve(choice);
     }
   }, (u) => ioError("prompt", target, u));
 
@@ -184,10 +185,10 @@ const mergeInTool = (
     );
 
 /**
- * A both-sides-changed file: --force keeps the host copy, a non-terminal
- * stdin skips, and otherwise the user picks the resolution per file. The
- * host copy is the only side git history cannot restore, so every path that
- * discards it is an explicit choice.
+ * A both-sides-changed file: --force or a non-terminal stdin keeps the host
+ * copy; otherwise the user picks the resolution per file. The host copy is
+ * the only side git history cannot restore, so every path that discards it
+ * is an explicit choice.
  */
 const resolveConflict = (
   f: Facts,
@@ -198,28 +199,23 @@ const resolveConflict = (
   const keepLocal = copyFile(f.hostPath, repoFile).map(() =>
     outcome("conflict", f.hostHash)
   );
-  if (force) return keepLocal;
-  if (!Deno.stdin.isTerminal()) {
-    return Task.of(outcome("skipped", f.baseHash));
-  }
-  return askChoice(f.target).andThen((choice) => {
-    switch (choice) {
-      case "local":
-        return keepLocal;
-      case "repo":
-        return copyFile(repoFile, f.hostPath).map(() =>
+  if (force || !Deno.stdin.isTerminal()) return keepLocal;
+  return askChoice(f.target).andThen((choice) =>
+    matchValue(choice, {
+      local: () => keepLocal,
+      repo: () =>
+        copyFile(repoFile, f.hostPath).map(() =>
           outcome("conflictRepo", f.repoHash)
-        );
-      case "tool":
-        return mergeInTool(f, repoFile).andThen((merged) =>
+        ),
+      tool: () =>
+        mergeInTool(f, repoFile).andThen((merged) =>
           merged === null
             ? resolveConflict(f, repoFile, false)
-            : Task.of(outcome("merged", merged))
-        );
-      case "skip":
-        return Task.of(outcome("skipped", f.baseHash));
-    }
-  });
+            : Task.of<Outcome, DotError>(outcome("merged", merged))
+        ),
+      skip: () => Task.of<Outcome, DotError>(outcome("skipped", f.baseHash)),
+    })
+  );
 };
 
 const apply = (
@@ -229,45 +225,34 @@ const apply = (
 ): Task<Outcome, DotError> => {
   const repoFile = l.filesDir + "/" + f.repoPath;
   const outcome = outcomeFor(f);
-  switch (decide(f)) {
-    case "clean":
-      return Task.of(outcome("clean", f.hostHash));
-    case "missing":
-      return Task.of(outcome("missing", null));
-    case "toHost":
-      return copyFile(repoFile, f.hostPath).map(() =>
-        outcome("toHost", f.repoHash)
-      );
-    case "toRepo":
-      return copyFile(f.hostPath, repoFile).map(() =>
-        outcome("toRepo", f.hostHash)
-      );
-    case "conflict":
-      return resolveConflict(f, repoFile, force);
-  }
+  return matchValue(decide(f), {
+    clean: () => Task.of<Outcome, DotError>(outcome("clean", f.hostHash)),
+    missing: () => Task.of<Outcome, DotError>(outcome("missing", null)),
+    toHost: () =>
+      copyFile(repoFile, f.hostPath).map(() => outcome("toHost", f.repoHash)),
+    toRepo: () =>
+      copyFile(f.hostPath, repoFile).map(() => outcome("toRepo", f.hostHash)),
+    conflict: () => resolveConflict(f, repoFile, force),
+  });
 };
 
-const line = (o: Outcome, recover: string | null): string | null => {
-  switch (o.plan) {
-    case "clean":
-      return null;
-    case "toRepo":
-      return `host -> repo  ${o.target}`;
-    case "toHost":
-      return `repo -> host  ${o.target}`;
-    case "conflict":
-      return `host -> repo  ${o.target} (both sides changed: host copy kept)` +
-        (recover === null ? "" : `\n  overwritten repo copy: ${recover}`);
-    case "conflictRepo":
-      return `repo -> host  ${o.target} (both sides changed: repo copy kept, host copy overwritten)`;
-    case "merged":
-      return `merged        ${o.target} (diff tool result kept on both sides)`;
-    case "skipped":
-      return `skipped       ${o.target} (conflict unresolved; rerun dot sync, or -f to keep the host copy)`;
-    case "missing":
-      return `missing       ${o.target} (gone on host and in repo; dot remove to untrack)`;
-  }
-};
+const line = (o: Outcome, recover: string | null): string | null =>
+  matchValue(o.plan, {
+    clean: () => null,
+    toRepo: () => `host -> repo  ${o.target}`,
+    toHost: () => `repo -> host  ${o.target}`,
+    conflict: () =>
+      `host -> repo  ${o.target} (both sides changed: host copy kept)` +
+      (recover === null ? "" : `\n  overwritten repo copy: ${recover}`),
+    conflictRepo: () =>
+      `repo -> host  ${o.target} (both sides changed: repo copy kept, host copy overwritten)`,
+    merged: () =>
+      `merged        ${o.target} (diff tool result kept on both sides)`,
+    skipped: () =>
+      `skipped       ${o.target} (conflict unresolved; rerun dot sync, or -f to keep the host copy)`,
+    missing: () =>
+      `missing       ${o.target} (gone on host and in repo; dot remove to untrack)`,
+  });
 
 /** Pulls with rebase; an empty remote (nothing pushed yet) counts as up to date. */
 const pull = (l: Layout, branch: string): Task<boolean, DotError> =>
