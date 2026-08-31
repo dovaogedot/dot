@@ -13,9 +13,9 @@ import { contractTarget, expandTarget } from "../path.ts";
 import {
   hostLabel,
   type Layout,
-  layout,
   loadManifest,
   loadState,
+  resolveLayout,
   saveState,
   type SyncState,
 } from "../config.ts";
@@ -53,13 +53,13 @@ type Plan = Detected | "conflictRepo" | "merged" | "skipped";
  * unchanged side yields to the changed one; a change on both sides is a
  * conflict.
  */
-const decide = (f: Facts): Detected => {
-  if (f.repoHash === null && f.hostHash === null) return "missing";
-  if (f.repoHash === null) return "toRepo";
-  if (f.hostHash === null) return "toHost";
-  if (f.repoHash === f.hostHash) return "clean";
-  if (f.baseHash === f.repoHash) return "toRepo";
-  if (f.baseHash === f.hostHash) return "toHost";
+const decide = (facts: Facts): Detected => {
+  if (facts.repoHash === null && facts.hostHash === null) return "missing";
+  if (facts.repoHash === null) return "toRepo";
+  if (facts.hostHash === null) return "toHost";
+  if (facts.repoHash === facts.hostHash) return "clean";
+  if (facts.baseHash === facts.repoHash) return "toRepo";
+  if (facts.baseHash === facts.hostHash) return "toHost";
   return "conflict";
 };
 
@@ -71,15 +71,15 @@ const hashOrNull = (
     : sha256(bytes).map((h): string | null => h);
 
 const gather = (
-  l: Layout,
+  layout: Layout,
   state: SyncState,
   repoPath: string,
   target: string,
 ): Task<Facts, IoError> => {
-  const hostPath = expandTarget(target, l.home);
-  return readBytesIfExists(hostPath).andThen((host) =>
-    readBytesIfExists(l.filesDir + "/" + repoPath).andThen((repo) =>
-      hashOrNull(host).andThen((hostHash) =>
+  const hostPath = expandTarget(target, layout.home);
+  return readBytesIfExists(hostPath).flatMap((host) =>
+    readBytesIfExists(layout.filesDir + "/" + repoPath).flatMap((repo) =>
+      hashOrNull(host).flatMap((hostHash) =>
         hashOrNull(repo).map((repoHash): Facts => ({
           repoPath,
           target,
@@ -102,10 +102,10 @@ type Outcome = {
 };
 
 const outcomeFor =
-  (f: Facts) => (plan: Plan, hash: string | null): Outcome => ({
+  (facts: Facts) => (plan: Plan, hash: string | null): Outcome => ({
     plan,
-    repoPath: f.repoPath,
-    target: f.target,
+    repoPath: facts.repoPath,
+    target: facts.target,
     hash,
   });
 
@@ -141,15 +141,15 @@ const readLine = (): string | null => {
   const buf = new Uint8Array(1);
   const bytes: number[] = [];
   for (;;) {
-    const n = Deno.stdin.readSync(buf);
-    if (n === null) {
+    const count = Deno.stdin.readSync(buf);
+    if (count === null) {
       if (bytes.length === 0) return null;
       break;
     }
-    const b = buf[0];
-    if (n === 0 || b === undefined) continue;
-    if (b === 10) break;
-    if (b !== 13) bytes.push(b);
+    const byte = buf[0];
+    if (count === 0 || byte === undefined) continue;
+    if (byte === 10) break;
+    if (byte !== 13) bytes.push(byte);
   }
   return new TextDecoder().decode(new Uint8Array(bytes));
 };
@@ -173,17 +173,23 @@ const askChoice = (target: string): Task<Choice, IoError> =>
  * hash when the tool leaves both sides identical, null otherwise.
  */
 const mergeInTool = (
-  f: Facts,
+  facts: Facts,
   repoFile: string,
 ): Task<string | null, GitError | IoError> =>
-  gitInteractive(null, ["difftool", "-y", "--no-index", f.hostPath, repoFile])
-    .andThen(() => readBytesIfExists(f.hostPath))
-    .andThen((host) =>
-      readBytesIfExists(repoFile).andThen(
+  gitInteractive(null, [
+    "difftool",
+    "-y",
+    "--no-index",
+    facts.hostPath,
+    repoFile,
+  ])
+    .flatMap(() => readBytesIfExists(facts.hostPath))
+    .flatMap((host) =>
+      readBytesIfExists(repoFile).flatMap(
         (repo): Task<string | null, IoError> =>
           host === null || repo === null
             ? Task.of<string | null>(null)
-            : sha256(host).andThen((hostHash) =>
+            : sha256(host).flatMap((hostHash) =>
               sha256(repo).map((repoHash): string | null =>
                 hostHash === repoHash ? hostHash : null
               )
@@ -198,75 +204,79 @@ const mergeInTool = (
  * is an explicit choice.
  */
 const resolveConflict = (
-  f: Facts,
+  facts: Facts,
   repoFile: string,
   force: boolean,
 ): Task<Outcome, IoError | GitError> => {
-  const outcome = outcomeFor(f);
-  const keepLocal = copyFile(f.hostPath, repoFile).map(() =>
-    outcome("conflict", f.hostHash)
+  const outcome = outcomeFor(facts);
+  const keepLocal = copyFile(facts.hostPath, repoFile).map(() =>
+    outcome("conflict", facts.hostHash)
   );
   if (force || !Deno.stdin.isTerminal()) return keepLocal;
-  return askChoice(f.target).andThen(
+  return askChoice(facts.target).flatMap(
     (choice): Task<Outcome, IoError | GitError> =>
       matchValue(choice, {
         local: () => keepLocal,
         repo: () =>
-          copyFile(repoFile, f.hostPath).map(() =>
-            outcome("conflictRepo", f.repoHash)
+          copyFile(repoFile, facts.hostPath).map(() =>
+            outcome("conflictRepo", facts.repoHash)
           ),
         tool: () =>
-          mergeInTool(f, repoFile).andThen(
+          mergeInTool(facts, repoFile).flatMap(
             (merged): Task<Outcome, IoError | GitError> =>
               merged === null
-                ? resolveConflict(f, repoFile, false)
+                ? resolveConflict(facts, repoFile, false)
                 : Task.of<Outcome>(outcome("merged", merged)),
           ),
-        skip: () => Task.of<Outcome>(outcome("skipped", f.baseHash)),
+        skip: () => Task.of<Outcome>(outcome("skipped", facts.baseHash)),
       }),
   );
 };
 
 const apply = (
-  l: Layout,
+  layout: Layout,
   force: boolean,
-  f: Facts,
+  facts: Facts,
 ): Task<Outcome, IoError | GitError> => {
-  const repoFile = l.filesDir + "/" + f.repoPath;
-  const outcome = outcomeFor(f);
-  return matchValue(decide(f), {
-    clean: () => Task.of<Outcome>(outcome("clean", f.hostHash)),
+  const repoFile = layout.filesDir + "/" + facts.repoPath;
+  const outcome = outcomeFor(facts);
+  return matchValue(decide(facts), {
+    clean: () => Task.of<Outcome>(outcome("clean", facts.hostHash)),
     missing: () => Task.of<Outcome>(outcome("missing", null)),
     toHost: () =>
-      copyFile(repoFile, f.hostPath).map(() => outcome("toHost", f.repoHash)),
+      copyFile(repoFile, facts.hostPath).map(() =>
+        outcome("toHost", facts.repoHash)
+      ),
     toRepo: () =>
-      copyFile(f.hostPath, repoFile).map(() => outcome("toRepo", f.hostHash)),
-    conflict: () => resolveConflict(f, repoFile, force),
+      copyFile(facts.hostPath, repoFile).map(() =>
+        outcome("toRepo", facts.hostHash)
+      ),
+    conflict: () => resolveConflict(facts, repoFile, force),
   });
 };
 
-const line = (o: Outcome, recover: string | null): string | null =>
-  matchValue(o.plan, {
+const line = (outcome: Outcome, recover: string | null): string | null =>
+  matchValue(outcome.plan, {
     clean: () => null,
-    toRepo: () => `host -> repo  ${o.target}`,
-    toHost: () => `repo -> host  ${o.target}`,
+    toRepo: () => `host -> repo  ${outcome.target}`,
+    toHost: () => `repo -> host  ${outcome.target}`,
     conflict: () =>
-      `host -> repo  ${o.target} (both sides changed: host copy kept)` +
+      `host -> repo  ${outcome.target} (both sides changed: host copy kept)` +
       (recover === null ? "" : `\n  overwritten repo copy: ${recover}`),
     conflictRepo: () =>
-      `repo -> host  ${o.target} (both sides changed: repo copy kept, host copy overwritten)`,
+      `repo -> host  ${outcome.target} (both sides changed: repo copy kept, host copy overwritten)`,
     merged: () =>
-      `merged        ${o.target} (diff tool result kept on both sides)`,
+      `merged        ${outcome.target} (diff tool result kept on both sides)`,
     skipped: () =>
-      `skipped       ${o.target} (conflict unresolved; rerun dot sync, or -f to keep the host copy)`,
+      `skipped       ${outcome.target} (conflict unresolved; rerun dot sync, or -f to keep the host copy)`,
     missing: () =>
-      `missing       ${o.target} (gone on host and in repo; dot remove to untrack)`,
+      `missing       ${outcome.target} (gone on host and in repo; dot remove to untrack)`,
   });
 
 /** Pulls with rebase; an empty remote (nothing pushed yet) counts as up to date. */
-const pull = (l: Layout, branch: string): Task<boolean, GitError> =>
-  gitRaw(l.repo, ["pull", "--rebase", "--autostash", "origin", branch])
-    .andThen((out): Task<boolean, GitError> => {
+const pull = (layout: Layout, branch: string): Task<boolean, GitError> =>
+  gitRaw(layout.repo, ["pull", "--rebase", "--autostash", "origin", branch])
+    .flatMap((out): Task<boolean, GitError> => {
       if (out.code === 0) return Task.of(true);
       if (out.stderr.includes("couldn't find remote ref")) {
         return Task.of(false);
@@ -279,29 +289,29 @@ const pull = (l: Layout, branch: string): Task<boolean, GitError> =>
       });
     });
 
-const requireBound = (l: Layout): Task<Layout, IoError | ConfigError> =>
-  stat(l.repo + "/.git").andThen((info): Task<Layout, ConfigError> =>
+const requireBound = (layout: Layout): Task<Layout, IoError | ConfigError> =>
+  stat(layout.repo + "/.git").flatMap((info): Task<Layout, ConfigError> =>
     info === null
       ? Task.fail(configError("not bound — run: dot bind <repo>"))
-      : git(l.repo, ["remote", "get-url", "origin"]).mapErr(() =>
+      : git(layout.repo, ["remote", "get-url", "origin"]).mapErr(() =>
         configError("no remote configured — run: dot bind <repo>")
-      ).map(() => l)
+      ).map(() => layout)
   );
 
 const summarize = (
-  l: Layout,
+  layout: Layout,
   outcomes: readonly Outcome[],
   committed: boolean,
   pushWarning: string | null,
   preSync: string | null,
 ): string => {
-  const repoDisplay = contractTarget(l.repo, l.home);
-  const fileLines = outcomes.flatMap((o) => {
-    const spec = `${preSync}:files/${o.repoPath}`;
-    const recover = o.plan === "conflict" && preSync !== null
+  const repoDisplay = contractTarget(layout.repo, layout.home);
+  const fileLines = outcomes.flatMap((outcome) => {
+    const spec = `${preSync}:files/${outcome.repoPath}`;
+    const recover = outcome.plan === "conflict" && preSync !== null
       ? `git -C ${repoDisplay} show ${/\s/.test(spec) ? `"${spec}"` : spec}`
       : null;
-    const rendered = line(o, recover);
+    const rendered = line(outcome, recover);
     return rendered === null ? [] : [rendered];
   });
   const clean = outcomes.filter((o) => o.plan === "clean").length;
@@ -316,43 +326,43 @@ const summarize = (
 export const sync = (
   force: boolean,
 ): Task<string, ConfigError | IoError | GitError> =>
-  Task.fromResult(layout()).andThen((l) =>
-    requireBound(l)
-      .andThen(() => git(l.repo, ["symbolic-ref", "--short", "HEAD"]))
-      .andThen((branch) => pull(l, branch))
-      .andThen(() => loadManifest(l))
-      .andThen((manifest) =>
-        loadState(l).andThen((state) => {
+  Task.fromResult(resolveLayout()).flatMap((layout) =>
+    requireBound(layout)
+      .flatMap(() => git(layout.repo, ["symbolic-ref", "--short", "HEAD"]))
+      .flatMap((branch) => pull(layout, branch))
+      .flatMap(() => loadManifest(layout))
+      .flatMap((manifest) =>
+        loadState(layout).flatMap((state) => {
           const entries = Object.entries(manifest.files)
             .sort(([, a], [, b]) => a < b ? -1 : a > b ? 1 : 0);
           return Task.traverse(
             entries,
             ([repoPath, target]) =>
-              gather(l, state, repoPath, target).andThen((f) =>
-                apply(l, force, f)
+              gather(layout, state, repoPath, target).flatMap((facts) =>
+                apply(layout, force, facts)
               ),
-          ).andThen((outcomes) => {
+          ).flatMap((outcomes) => {
             const hashes = Object.fromEntries(
               outcomes.flatMap((o) =>
                 o.hash === null ? [] : [[o.repoPath, o.hash] as const]
               ),
             );
-            return saveState(l, { version: 1, files: hashes })
-              .andThen(() =>
-                commitIfChanged(l.repo, `dot: sync from ${hostLabel()}`)
+            return saveState(layout, { version: 1, files: hashes })
+              .flatMap(() =>
+                commitIfChanged(layout.repo, `dot: sync from ${hostLabel()}`)
               )
-              .andThen((committed) => {
+              .flatMap((committed) => {
                 // The sync commit's parent holds the repo copies that conflicts
                 // overwrote; its hash pins the printed retrieval command.
                 const preSync = committed &&
                     outcomes.some((o) => o.plan === "conflict")
-                  ? git(l.repo, ["rev-parse", "--short", "HEAD^"])
+                  ? git(layout.repo, ["rev-parse", "--short", "HEAD^"])
                     .map((h): string | null => h)
                     .orElse(() => Task.of<string | null>(null))
                   : Task.of<string | null>(null);
-                return preSync.andThen((ref) =>
-                  pushBestEffort(l.repo).map((warning) =>
-                    summarize(l, outcomes, committed, warning, ref)
+                return preSync.flatMap((ref) =>
+                  pushBestEffort(layout.repo).map((warning) =>
+                    summarize(layout, outcomes, committed, warning, ref)
                   )
                 );
               });

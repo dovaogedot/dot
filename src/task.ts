@@ -44,38 +44,38 @@ export class Task<T, E> {
   ): Task<T[], E> {
     return items.reduce(
       (acc: Task<T[], E>, a) =>
-        acc.andThen((out) => f(a).map((t) => [...out, t])),
+        acc.flatMap((out) => f(a).map((t) => [...out, t])),
       Task.of<T[], E>([]),
     );
   }
 
   map<U>(f: (t: T) => U): Task<U, E> {
     return new Task(async () => {
-      const r = await this.thunk();
-      return r.ok ? ok(f(r.value)) : r;
+      const result = await this.thunk();
+      return result.ok ? ok(f(result.value)) : result;
     });
   }
 
   mapErr<F>(f: (e: E) => F): Task<T, F> {
     return new Task(async () => {
-      const r = await this.thunk();
-      return r.ok ? r : err(f(r.error));
+      const result = await this.thunk();
+      return result.ok ? result : err(f(result.error));
     });
   }
 
   /** Chains a dependent task; the error type widens to cover both steps. */
-  andThen<U, F>(f: (t: T) => Task<U, F>): Task<U, E | F> {
+  flatMap<U, F>(f: (t: T) => Task<U, F>): Task<U, E | F> {
     return new Task<U, E | F>(async (): Promise<Result<U, E | F>> => {
-      const r = await this.thunk();
-      return r.ok ? f(r.value).run() : r;
+      const result = await this.thunk();
+      return result.ok ? f(result.value).run() : result;
     });
   }
 
   /** Recovers from a failure; the error type narrows to what recovery can produce. */
   orElse<F>(f: (e: E) => Task<T, F>): Task<T, F> {
     return new Task<T, F>(async (): Promise<Result<T, F>> => {
-      const r = await this.thunk();
-      return r.ok ? r : f(r.error).run();
+      const result = await this.thunk();
+      return result.ok ? result : f(result.error).run();
     });
   }
 

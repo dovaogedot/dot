@@ -10,10 +10,10 @@ import {
 import { contractTarget, repoPathFor, resolvePath } from "../path.ts";
 import {
   type Layout,
-  layout,
   loadManifest,
   loadState,
   type Manifest,
+  resolveLayout,
   saveManifest,
   saveState,
 } from "../config.ts";
@@ -27,14 +27,14 @@ type Added = {
 };
 
 const trackOne = (
-  l: Layout,
+  layout: Layout,
   abs: string,
 ): Task<Added, IoError | UsageError> => {
-  const target = contractTarget(abs, l.home);
+  const target = contractTarget(abs, layout.home);
   const repoPath = repoPathFor(target);
-  return copyFile(abs, l.filesDir + "/" + repoPath)
-    .andThen(() => readBytesIfExists(abs))
-    .andThen((bytes): Task<Added, IoError | UsageError> =>
+  return copyFile(abs, layout.filesDir + "/" + repoPath)
+    .flatMap(() => readBytesIfExists(abs))
+    .flatMap((bytes): Task<Added, IoError | UsageError> =>
       bytes === null
         ? Task.fail(usageError(`no such file: ${abs}`))
         : sha256(bytes).map((hash) => ({ repoPath, target, hash }))
@@ -42,14 +42,14 @@ const trackOne = (
 };
 
 const listFiles = (
-  l: Layout,
+  layout: Layout,
   abs: string,
 ): Task<string[], IoError | UsageError> =>
-  stat(abs).andThen((info): Task<string[], IoError | UsageError> => {
+  stat(abs).flatMap((info): Task<string[], IoError | UsageError> => {
     if (info === null) {
       return Task.fail(usageError(`no such path: ${abs}`));
     }
-    if (abs === l.root || abs.startsWith(l.root + "/")) {
+    if (abs === layout.root || abs.startsWith(layout.root + "/")) {
       return Task.fail(
         usageError(`cannot track dot's own data directory: ${abs}`),
       );
@@ -71,10 +71,10 @@ const report = (
   ].join("\n");
 
 export const add = (raw: string): Task<string, DotError> =>
-  Task.fromResult(layout()).andThen((l) =>
-    loadManifest(l).andThen((manifest) =>
-      listFiles(l, resolvePath(raw, l.home)).andThen((paths) =>
-        Task.traverse(paths, (p) => trackOne(l, p)).andThen(
+  Task.fromResult(resolveLayout()).flatMap((layout) =>
+    loadManifest(layout).flatMap((manifest) =>
+      listFiles(layout, resolvePath(raw, layout.home)).flatMap((paths) =>
+        Task.traverse(paths, (p) => trackOne(layout, p)).flatMap(
           (entries): Task<string, DotError> => {
             const skipped = entries.filter((e) =>
               manifest.files[e.repoPath] !== undefined
@@ -94,10 +94,10 @@ export const add = (raw: string): Task<string, DotError> =>
                 ),
               },
             };
-            return saveManifest(l, next)
-              .andThen(() => loadState(l))
-              .andThen((state) =>
-                saveState(l, {
+            return saveManifest(layout, next)
+              .flatMap(() => loadState(layout))
+              .flatMap((state) =>
+                saveState(layout, {
                   version: 1,
                   files: {
                     ...state.files,
@@ -107,13 +107,13 @@ export const add = (raw: string): Task<string, DotError> =>
                   },
                 })
               )
-              .andThen(() =>
+              .flatMap(() =>
                 commitIfChanged(
-                  l.repo,
+                  layout.repo,
                   `dot: add ${added.map((e) => e.target).join(", ")}`,
                 )
               )
-              .andThen(() => pushBestEffort(l.repo))
+              .flatMap(() => pushBestEffort(layout.repo))
               .map((warning) => report(added, skipped, warning));
           },
         )

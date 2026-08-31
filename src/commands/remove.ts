@@ -4,9 +4,9 @@ import { Task } from "../task.ts";
 import { type DotError, usageError } from "../errors.ts";
 import { contractTarget, resolvePath } from "../path.ts";
 import {
-  layout,
   loadManifest,
   loadState,
+  resolveLayout,
   saveManifest,
   saveState,
 } from "../config.ts";
@@ -14,9 +14,12 @@ import { removeIfExists } from "../fs.ts";
 import { commitIfChanged, pushBestEffort } from "../git.ts";
 
 export const remove = (raw: string): Task<string, DotError> =>
-  Task.fromResult(layout()).andThen((l) =>
-    loadManifest(l).andThen((manifest): Task<string, DotError> => {
-      const portable = contractTarget(resolvePath(raw, l.home), l.home);
+  Task.fromResult(resolveLayout()).flatMap((layout) =>
+    loadManifest(layout).flatMap((manifest): Task<string, DotError> => {
+      const portable = contractTarget(
+        resolvePath(raw, layout.home),
+        layout.home,
+      );
       const doomed = Object.entries(manifest.files).filter(([, target]) =>
         target === portable || target.startsWith(portable + "/")
       );
@@ -30,12 +33,12 @@ export const remove = (raw: string): Task<string, DotError> =>
       );
       return Task.traverse(
         doomed,
-        ([repoPath]) => removeIfExists(l.filesDir + "/" + repoPath),
+        ([repoPath]) => removeIfExists(layout.filesDir + "/" + repoPath),
       )
-        .andThen(() => saveManifest(l, { version: 1, files }))
-        .andThen(() => loadState(l))
-        .andThen((state) =>
-          saveState(l, {
+        .flatMap(() => saveManifest(layout, { version: 1, files }))
+        .flatMap(() => loadState(layout))
+        .flatMap((state) =>
+          saveState(layout, {
             version: 1,
             files: Object.fromEntries(
               Object.entries(state.files).filter(([repoPath]) =>
@@ -44,13 +47,13 @@ export const remove = (raw: string): Task<string, DotError> =>
             ),
           })
         )
-        .andThen(() =>
+        .flatMap(() =>
           commitIfChanged(
-            l.repo,
+            layout.repo,
             `dot: remove ${doomed.map(([, t]) => t).join(", ")}`,
           )
         )
-        .andThen(() => pushBestEffort(l.repo))
+        .flatMap(() => pushBestEffort(layout.repo))
         .map((warning) =>
           [
             ...doomed.map(([, t]) => `untracked ${t} (host copy kept)`),

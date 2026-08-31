@@ -39,7 +39,7 @@ export const ensureDir = (path: string): Task<void, IoError> =>
   }, (u) => ioError("mkdir", path, u));
 
 export const writeText = (path: string, text: string): Task<void, IoError> =>
-  ensureDir(dirname(path)).andThen(() =>
+  ensureDir(dirname(path)).flatMap(() =>
     Task.attempt(
       () => Deno.writeTextFile(path, text),
       (u) => ioError("write", path, u),
@@ -48,7 +48,7 @@ export const writeText = (path: string, text: string): Task<void, IoError> =>
 
 /** Copies content and, on POSIX systems, the permission bits of the source. */
 export const copyFile = (src: string, dst: string): Task<void, IoError> =>
-  ensureDir(dirname(dst)).andThen(() =>
+  ensureDir(dirname(dst)).flatMap(() =>
     Task.attempt(
       () => Deno.copyFile(src, dst),
       (u) => ioError("copy", `${src} -> ${dst}`, u),
@@ -65,15 +65,15 @@ export const removeIfExists = (path: string): Task<void, IoError> =>
     }
   }, (u) => ioError("remove", path, u));
 
-const visit = (d: string): Promise<string[]> =>
-  Array.fromAsync(Deno.readDir(d)).then((entries) =>
+const visit = (dir: string): Promise<string[]> =>
+  Array.fromAsync(Deno.readDir(dir)).then((entries) =>
     Promise.all(
       entries
-        .filter((e) => e.name !== ".git")
-        .map((e) =>
-          e.isDirectory
-            ? visit(d + "/" + e.name)
-            : Promise.resolve(e.isFile ? [d + "/" + e.name] : [])
+        .filter((entry) => entry.name !== ".git")
+        .map((entry) =>
+          entry.isDirectory
+            ? visit(dir + "/" + entry.name)
+            : Promise.resolve(entry.isFile ? [dir + "/" + entry.name] : [])
         ),
     ).then((nested) => nested.flat())
   );

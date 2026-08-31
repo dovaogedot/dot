@@ -38,7 +38,7 @@ export const git = (
   cwd: string | null,
   args: readonly string[],
 ): Task<string, GitError> =>
-  gitRaw(cwd, args).andThen((out): Task<string, GitError> =>
+  gitRaw(cwd, args).flatMap((out): Task<string, GitError> =>
     out.code === 0 ? Task.of(out.stdout.trim()) : Task.fail({
       kind: "git",
       args,
@@ -76,8 +76,8 @@ export const commitIfChanged = (
   message: string,
 ): Task<boolean, GitError> =>
   git(repo, ["add", "-A"])
-    .andThen(() => git(repo, ["status", "--porcelain"]))
-    .andThen((status): Task<boolean, GitError> =>
+    .flatMap(() => git(repo, ["status", "--porcelain"]))
+    .flatMap((status): Task<boolean, GitError> =>
       status === ""
         ? Task.of(false)
         : git(repo, ["commit", "-m", message]).map(() => true)
@@ -87,10 +87,10 @@ export const commitIfChanged = (
 export const pushBestEffort = (repo: string): Task<string | null, never> =>
   git(repo, ["push", "origin", "HEAD"])
     .map((): string | null => null)
-    .orElse((e) =>
+    .orElse((error) =>
       Task.of<string | null>(
         `warning: push failed, the commit stays local until the next sync: ${
-          e.message.split("\n")[0] ?? ""
+          error.message.split("\n")[0] ?? ""
         }`,
       )
     );

@@ -2,36 +2,45 @@
 
 import { Task } from "../task.ts";
 import type { ConfigError, GitError, IoError } from "../errors.ts";
-import { emptyManifest, type Layout, layout, saveManifest } from "../config.ts";
+import {
+  emptyManifest,
+  type Layout,
+  resolveLayout,
+  saveManifest,
+} from "../config.ts";
 import { commitIfChanged, git } from "../git.ts";
 import { ensureDir, stat } from "../fs.ts";
 
-const rebind = (l: Layout, url: string): Task<string, GitError> =>
-  git(l.repo, ["remote", "get-url", "origin"])
-    .andThen(() => git(l.repo, ["remote", "set-url", "origin", url]))
-    .orElse(() => git(l.repo, ["remote", "add", "origin", url]))
-    .andThen(() => git(l.repo, ["fetch", "origin"]))
-    .map(() => `bound ${url}\nrepo: ${l.repo}`);
+const rebind = (layout: Layout, url: string): Task<string, GitError> =>
+  git(layout.repo, ["remote", "get-url", "origin"])
+    .flatMap(() => git(layout.repo, ["remote", "set-url", "origin", url]))
+    .orElse(() => git(layout.repo, ["remote", "add", "origin", url]))
+    .flatMap(() => git(layout.repo, ["fetch", "origin"]))
+    .map(() => `bound ${url}\nrepo: ${layout.repo}`);
 
 /** Ensures the cloned repo carries a manifest, committing one when the remote had none. */
-const ensureManifest = (l: Layout): Task<void, IoError | GitError> =>
-  stat(l.manifestPath).andThen((info): Task<void, IoError | GitError> =>
-    info !== null ? Task.of<void>(undefined) : saveManifest(l, emptyManifest)
-      .andThen(() => commitIfChanged(l.repo, "dot: init manifest"))
-      .map(() => undefined)
+const ensureManifest = (layout: Layout): Task<void, IoError | GitError> =>
+  stat(layout.manifestPath).flatMap((info): Task<void, IoError | GitError> =>
+    info !== null
+      ? Task.of<void>(undefined)
+      : saveManifest(layout, emptyManifest)
+        .flatMap(() => commitIfChanged(layout.repo, "dot: init manifest"))
+        .map(() => undefined)
   );
 
-const clone = (l: Layout, url: string): Task<string, IoError | GitError> =>
-  ensureDir(l.root)
-    .andThen(() => git(null, ["clone", url, l.repo]))
-    .andThen(() => ensureManifest(l))
-    .map(() => `bound ${url}\nrepo: ${l.repo}\nrun: dot sync`);
+const clone = (layout: Layout, url: string): Task<string, IoError | GitError> =>
+  ensureDir(layout.root)
+    .flatMap(() => git(null, ["clone", url, layout.repo]))
+    .flatMap(() => ensureManifest(layout))
+    .map(() => `bound ${url}\nrepo: ${layout.repo}\nrun: dot sync`);
 
 export const bind = (
   url: string,
 ): Task<string, ConfigError | IoError | GitError> =>
-  Task.fromResult(layout()).andThen((l) =>
-    stat(l.repo + "/.git").andThen((info): Task<string, IoError | GitError> =>
-      info === null ? clone(l, url) : rebind(l, url)
+  Task.fromResult(resolveLayout()).flatMap((layout) =>
+    stat(layout.repo + "/.git").flatMap((
+      info,
+    ): Task<string, IoError | GitError> =>
+      info === null ? clone(layout, url) : rebind(layout, url)
     )
   );

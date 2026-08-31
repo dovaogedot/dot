@@ -21,32 +21,28 @@ export const isAbsolute = (p: string): boolean =>
   p.startsWith("/") || /^[A-Za-z]:\//.test(p);
 
 /** Collapses "." and ".." segments and duplicate separators; expects slash-separated input. */
-export const normalize = (p: string): string => {
-  const drive = /^[A-Za-z]:/.test(p) ? p.slice(0, 2) : "";
-  const rest = drive === "" ? p : p.slice(2);
+export const normalize = (path: string): string => {
+  const drive = /^[A-Za-z]:/.test(path) ? path.slice(0, 2) : "";
+  const rest = drive === "" ? path : path.slice(2);
   const abs = rest.startsWith("/");
-  const out: string[] = [];
-  for (const part of rest.split("/")) {
-    if (part === "" || part === ".") continue;
-    if (part !== "..") {
-      out.push(part);
-      continue;
-    }
+  const parts = rest.split("/").reduce<string[]>((out, part) => {
+    if (part === "" || part === ".") return out;
+    if (part !== "..") return [...out, part];
     const last = out[out.length - 1];
-    if (last !== undefined && last !== "..") out.pop();
-    else if (!abs) out.push("..");
-  }
-  return drive + (abs ? "/" : "") + out.join("/");
+    if (last !== undefined && last !== "..") return out.slice(0, -1);
+    return abs ? out : [...out, ".."];
+  }, []);
+  return drive + (abs ? "/" : "") + parts.join("/");
 };
 
 export const join = (...parts: readonly string[]): string =>
   normalize(parts.map(toSlash).join("/"));
 
-export const dirname = (p: string): string => {
-  const i = p.lastIndexOf("/");
+export const dirname = (path: string): string => {
+  const i = path.lastIndexOf("/");
   if (i < 0) return ".";
   if (i === 0) return "/";
-  return p.slice(0, i);
+  return path.slice(0, i);
 };
 
 export const homeDir = (): Result<string, ConfigError> => {

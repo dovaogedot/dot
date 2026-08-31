@@ -25,7 +25,7 @@ export type Layout = {
   readonly statePath: string;
 };
 
-export const layout = (): Result<Layout, ConfigError> =>
+export const resolveLayout = (): Result<Layout, ConfigError> =>
   map(homeDir(), (home) => {
     const envRoot = envGet("DOT_HOME");
     const root = envRoot !== null && envRoot !== ""
@@ -111,23 +111,25 @@ const serialize = (doc: Manifest | SyncState): string =>
   "\n";
 
 export const loadManifest = (
-  l: Layout,
+  layout: Layout,
 ): Task<Manifest, IoError | ConfigError> =>
-  readTextIfExists(l.manifestPath).andThen(
+  readTextIfExists(layout.manifestPath).flatMap(
     (text): Task<Manifest, ConfigError> =>
       text === null
         ? Task.fail(configError(
-          `no manifest at ${l.manifestPath} — run: dot bind <repo>`,
+          `no manifest at ${layout.manifestPath} — run: dot bind <repo>`,
         ))
         : Task.fromResult(decodeDoc(text, "dot.json")),
   );
 
-export const saveManifest = (l: Layout, m: Manifest): Task<void, IoError> =>
-  writeText(l.manifestPath, serialize(m));
+export const saveManifest = (
+  layout: Layout,
+  m: Manifest,
+): Task<void, IoError> => writeText(layout.manifestPath, serialize(m));
 
 /** An unreadable or invalid state file degrades to the empty state: it is a cache. */
-export const loadState = (l: Layout): Task<SyncState, never> =>
-  readTextIfExists(l.statePath)
+export const loadState = (layout: Layout): Task<SyncState, never> =>
+  readTextIfExists(layout.statePath)
     .map((text) => {
       if (text === null) return emptyState;
       const decoded = decodeDoc(text, "state.json");
@@ -135,8 +137,8 @@ export const loadState = (l: Layout): Task<SyncState, never> =>
     })
     .orElse(() => Task.of(emptyState));
 
-export const saveState = (l: Layout, s: SyncState): Task<void, IoError> =>
-  writeText(l.statePath, serialize(s));
+export const saveState = (layout: Layout, s: SyncState): Task<void, IoError> =>
+  writeText(layout.statePath, serialize(s));
 
 export const hostLabel = (): string => {
   try {
