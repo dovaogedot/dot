@@ -210,10 +210,16 @@ private def resolveConflict(ctx: SyncCtx, facts: Facts): IO[Outcome] = {
         askChoice(facts.target).flatMap:
           case Choice.Local => keepLocal
           case Choice.Repo  =>
-            copyFile(repoFile, facts.hostPath).as(outcome(Plan.ConflictRepo, facts.repoHash))
+            copyToHost(repoFile, facts.hostPath).as(outcome(Plan.ConflictRepo, facts.repoHash))
           case Choice.Skip =>
             park(ctx.layout, facts).as(outcome(Plan.Parked, facts.baseHash))
 }
+
+/** Copies onto a host path; a permission failure names the sudo command that applies it by hand. */
+private def copyToHost(src: String, hostPath: String): IO[Unit] =
+  copyFile(src, hostPath).adaptError:
+    case e: DotError.Io if e.cause == "permission denied" =>
+      DotError.Io(e.op, e.path, s"permission denied — run: sudo cp $src $hostPath")
 
 private def hasConflictMarkers(text: String): Boolean =
   text.split("\n", -1).exists(_.startsWith("<<<<<<<"))
@@ -234,7 +240,7 @@ private def applyOne(ctx: SyncCtx, facts: Facts): IO[Outcome] = {
     case Detected.Missing  => IO.pure(outcome(Plan.Missing, None))
     case Detected.Conflict => resolveConflict(ctx, facts)
     case Detected.ToHost   =>
-      copyFile(repoFile, facts.hostPath).as(outcome(Plan.ToHost, facts.repoHash))
+      copyToHost(repoFile, facts.hostPath).as(outcome(Plan.ToHost, facts.repoHash))
     case Detected.ToRepo =>
       copyFile(facts.hostPath, repoFile).as(outcome(Plan.ToRepo, facts.hostHash))
   readTextIfExists(parkedFile).flatMap:
@@ -244,7 +250,7 @@ private def applyOne(ctx: SyncCtx, facts: Facts): IO[Outcome] = {
         for
           hash <- sha256IfExists(parkedFile)
 
-          _ <- copyFile(parkedFile, facts.hostPath)
+          _ <- copyToHost(parkedFile, facts.hostPath)
           _ <- copyFile(parkedFile, repoFile)
           _ <- removeIfExists(parkedFile)
         yield outcome(Plan.Resolved, hash)

@@ -26,9 +26,9 @@ extension [A](io: IO[A]) {
   /**
    * Adapts any raised failure into an Io error carrying the operation and
    * path. Apply at the effect boundary, where failures are still raw
-   * exceptions.
+   * exceptions; an already-typed failure passes through unchanged.
    */
   def orIoError(op: String, path: String): IO[A] =
     io.adaptError:
-      case t => DotError.Io(op, path, describe(t))
+      case t if !t.isInstanceOf[DotError] => DotError.Io(op, path, describe(t))
 }

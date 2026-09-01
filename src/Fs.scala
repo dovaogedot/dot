@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import fs2.Stream
 import fs2.hashing.{HashAlgorithm, Hashing}
 import fs2.io.file.{CopyFlag, CopyFlags, Files, Path}
-import java.nio.file.NoSuchFileException
+import java.nio.file.{AccessDeniedException, NoSuchFileException}
 
 /** File-system effects over fs2 Files; failures surface as DotError.Io. */
 
@@ -47,7 +47,10 @@ def writeText(path: String, text: String): IO[Unit] = {
 /** Copies content and, on POSIX systems, the attributes of the source. */
 def copyFile(src: String, dst: String): IO[Unit] = {
   val flags = CopyFlags(CopyFlag.ReplaceExisting, CopyFlag.CopyAttributes)
-  val copy  = Files[IO].copy(Path(src), Path(dst), flags).orIoError("copy", s"$src -> $dst")
+  val copy  = Files[IO]
+    .copy(Path(src), Path(dst), flags)
+    .adaptError { case _: AccessDeniedException => DotError.Io("copy", s"$src -> $dst", "permission denied") }
+    .orIoError("copy", s"$src -> $dst")
   ensureDir(dst.dirname) *> copy
 }
 
