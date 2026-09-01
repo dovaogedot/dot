@@ -51,6 +51,16 @@ for flag in -x -m --merge; do
 done
 echo 'ok: -x, -m, --merge rejected'
 
+echo '== -q suppresses stdout; -s suppresses stderr as well'
+[ -z "$(run -q status)" ] || { echo 'FAIL: -q printed to stdout'; exit 1; }
+[ -z "$(run status --quiet)" ] || { echo 'FAIL: --quiet after the subcommand printed'; exit 1; }
+if run -q sync -x 2> "$S/qerr.txt"; then echo 'FAIL: -q sync -x accepted'; exit 1; fi
+[ -s "$S/qerr.txt" ] || { echo 'FAIL: -q silenced stderr'; exit 1; }
+if run -s sync -x 2> "$S/serr.txt"; then echo 'FAIL: -s sync -x accepted'; exit 1; fi
+[ ! -s "$S/serr.txt" ] || { echo 'FAIL: -s did not silence stderr'; cat "$S/serr.txt"; exit 1; }
+[ -z "$(run -s status)" ] || { echo 'FAIL: -s printed to stdout'; exit 1; }
+echo 'ok: quiet and shush behave, exit codes survive'
+
 echo '== non-terminal stdin resolves a conflict like --force'
 conflict one
 run status | grep -q 'conflict      ~/.bashrc' || { echo 'FAIL: status lacks conflict'; exit 1; }

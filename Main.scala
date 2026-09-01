@@ -4,6 +4,7 @@ import cats.effect.std.Console
 import cats.effect.{ExitCode, IO, IOApp}
 import cats.syntax.all.*
 import com.monovore.decline.{Command, Opts}
+import java.io.{OutputStream, PrintStream}
 
 val VERSION = "0.2.0"
 
@@ -53,8 +54,16 @@ private val command: Command[Action] = {
   Command(
     name = "dot",
     header =
-      s"dot $VERSION — sync config files across hosts through a git repo; data lives in ~/.dot (override with DOT_HOME)",
+      s"dot $VERSION — sync config files across hosts through a git repo; data lives in ~/.dot"
+        + " (override with DOT_HOME); -q/--quiet silences stdout, -s/--shush also stderr",
   )(actions)
+}
+
+/** Swaps the process streams for a null sink, so every later write disappears. */
+private def silence(out: Boolean, err: Boolean): IO[Unit] = IO.blocking {
+  val sink = PrintStream(OutputStream.nullOutputStream)
+  if out then System.setOut(sink)
+  if err then System.setErr(sink)
 }
 
 object Main extends IOApp {
@@ -71,7 +80,14 @@ object Main extends IOApp {
       case Left(error)    => Console[IO].errorln(error.render).as(ExitCode.Error)
   }
 
-  def run(args: List[String]): IO[ExitCode] = args match
+  def run(args: List[String]): IO[ExitCode] = {
+    val quiet = args.exists(arg => arg == "-q" || arg == "--quiet")
+    val shush = args.exists(arg => arg == "-s" || arg == "--shush")
+    val rest  = args.filterNot(arg => arg == "-q" || arg == "--quiet" || arg == "-s" || arg == "--shush")
+    silence(quiet || shush, shush) *> dispatch(rest)
+  }
+
+  private def dispatch(args: List[String]): IO[ExitCode] = args match
     case ("version" | "--version" | "-V") :: Nil => IO.println(s"dot $VERSION").as(ExitCode.Success)
     case _                                       =>
       val argv = args match
