@@ -77,5 +77,8 @@ not picked up automatically — run `dot add` on them.
 ## Development
 
 `scala compile .` type-checks the project; `scala fmt .` formats it per
-`.scalafmt.conf`. `sh test/run.sh` runs the end-to-end suites against the
-installed binary (`DOT_BIN=<path>` points them at another build).
+`.scalafmt.conf`. `scala test .` runs the weaver suites under `test/`: the
+style gate, and the end-to-end scenarios, which spawn the installed binary
+(`DOT_BIN=<path>` points them at another build) inside a throwaway home with
+its own bare remote, one per test. `--test-only dot.ParkSuite` narrows the run
+to one suite.

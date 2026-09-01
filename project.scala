@@ -4,5 +4,6 @@
 //> using dep com.monovore::decline::2.6.2
 //> using dep io.circe::circe-core::0.14.16
 //> using dep io.circe::circe-parser::0.14.16
+//> using test.dep org.typelevel::weaver-cats::0.13.0
 //> using options -deprecation -feature -unchecked
 //> using mainClass dot.Main
