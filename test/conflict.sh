@@ -26,11 +26,14 @@ conflict() {
   git -C "$S/dothome/repo" push -q origin main
 }
 
-echo '== bind + add + baseline sync'
+echo '== bind + add commit locally; the first sync pushes'
 run bind "$S/remote.git" > /dev/null
 printf 'original\n' > "$S/home/.bashrc"
 run add "$S/home/.bashrc" > /dev/null
+[ "$(git -C "$S/remote.git" rev-list --count --all)" = 0 ] || { echo 'FAIL: add pushed'; exit 1; }
 run sync > /dev/null
+[ "$(git -C "$S/remote.git" rev-list --count --all)" -gt 0 ] || { echo 'FAIL: sync did not push'; exit 1; }
+echo 'ok: add stayed local, sync pushed'
 
 echo '== flag surface: unknown flags are rejected'
 for flag in -x -m --merge; do
@@ -58,5 +61,13 @@ echo "$out" | grep -q 'choose \[l/r/s\]: choose \[l/r/s\]:' || { echo 'FAIL: d n
 echo "$out" | grep -q 'repo copy kept' || { echo 'FAIL: r not honored'; echo "$out"; exit 1; }
 [ "$(cat "$S/home/.bashrc")" = 'repo change two' ] || { echo 'FAIL: host copy not overwritten'; exit 1; }
 echo 'ok: menu gated to l/r/s, repo choice works'
+
+echo '== remove commits locally; sync pushes it'
+before=$(git -C "$S/remote.git" rev-list --count --all)
+run remove "$S/home/.bashrc" > /dev/null
+[ "$(git -C "$S/remote.git" rev-list --count --all)" = "$before" ] || { echo 'FAIL: remove pushed'; exit 1; }
+run sync > /dev/null
+[ "$(git -C "$S/remote.git" rev-list --count --all)" -gt "$before" ] || { echo 'FAIL: sync did not push the removal'; exit 1; }
+echo 'ok: remove stayed local, sync pushed'
 
 echo '== all conflict checks passed'

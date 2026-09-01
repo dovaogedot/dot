@@ -24,11 +24,9 @@ def remove(raw: String): IO[String] = {
     _     <- saveState(layout, SyncState(state.files.filter((repoPath, _) => files.contains(repoPath))))
     _     <- Git.in(layout.repo).commitIfChanged(s"dot: remove ${doomed.map(_._2).mkString(", ")}")
 
-    warning <- Git.in(layout.repo).pushBestEffort
-
     untracked = doomed.map: (_, target) =>
       s"untracked $target (host copy kept)"
 
-    lines = untracked :+ warning.getOrElse("committed and pushed")
+    lines = untracked :+ "committed — dot sync pushes"
   yield lines.mkString("\n")
 }

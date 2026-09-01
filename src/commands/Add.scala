@@ -28,19 +28,15 @@ private def listFiles(layout: Layout, abs: String): IO[List[String]] = {
         *> files
 }
 
-private def addReport(
-  added: List[Added],
-  skipped: List[Added],
-  pushWarning: Option[String],
-): String = {
-  val pushed =
+private def addReport(added: List[Added], skipped: List[Added]): String = {
+  val committed =
     if added.isEmpty then Nil
-    else List(pushWarning.getOrElse(s"committed and pushed ${added.length} file(s)"))
+    else List(s"committed ${added.length} file(s) — dot sync pushes them")
   val tracking = added.map: a =>
     s"tracking ${a.target}"
   val already = skipped.map: s =>
     s"already tracked: ${s.target}"
-  val lines = tracking ::: already ::: pushed
+  val lines = tracking ::: already ::: committed
   lines.mkString("\n")
 }
 
@@ -59,9 +55,7 @@ private def commitAdded(
     state <- loadState(layout)
     _     <- saveState(layout, SyncState(state.files ++ hashes))
     _     <- Git.in(layout.repo).commitIfChanged(s"dot: add $labels")
-
-    warning <- Git.in(layout.repo).pushBestEffort
-  yield addReport(added, skipped, warning)
+  yield addReport(added, skipped)
 }
 
 def add(raw: String): IO[String] = {
@@ -76,7 +70,7 @@ def add(raw: String): IO[String] = {
     (skipped, added) = entries.partition(e => manifest.files.contains(e.repoPath))
 
     report <-
-      if added.isEmpty then IO.pure(addReport(added, skipped, None))
+      if added.isEmpty then IO.pure(addReport(added, skipped))
       else commitAdded(layout, manifest, entries, added, skipped)
   yield report
 }

@@ -42,11 +42,15 @@ dot remove ~/.bashrc                      # untrack (the host copy stays)
   parked copy until the `<<<<<<<` markers are gone; the next `dot sync` applies
   it to both host and repo. While markers remain, sync reports the file without
   asking again — a parked file also overrides `-f`. `dot sync --abort` discards
-  every parked copy.
+  every parked copy. A host copy the file system's permissions reject fails
+  with the `sudo cp` command that applies it by hand.
 - Missing on the host: installed from the repo. Anything the host changed is
   committed, so the repo holds the latest state of every host. The push runs
   only when the remote lacks commits — a sync that changes nothing stays
   local-only.
+- `sync` is the only command that talks to the remote (besides `bind`, which
+  clones it). `add` and `remove` commit locally; the next `dot sync` pushes
+  their commits.
 
 ## Layout
 
