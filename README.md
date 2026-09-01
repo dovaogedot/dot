@@ -24,6 +24,7 @@ dot bind git@github.com:you/dotfiles.git  # once per machine; clones into ~/.dot
 dot add ~/.bashrc                         # track a file (a directory tracks every file inside)
 dot sync                                  # pull, reconcile, push (-f: conflicts keep the host copy)
 dot sync --abort                          # discard parked conflicts; both sides stay as they are
+dot status                                # every tracked file and what sync would do; reads local state only
 dot remove ~/.bashrc                      # untrack (the host copy stays)
 ```
 

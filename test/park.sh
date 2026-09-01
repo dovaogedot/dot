@@ -41,6 +41,7 @@ parked="$S/dothome/conflicts/.bashrc"
 grep -q '^<<<<<<< host' "$parked" || { echo 'FAIL: parked file lacks markers'; cat "$parked"; exit 1; }
 [ "$(head -c 11 "$S/home/.bashrc")" = 'line a HOST' ] || { echo 'FAIL: host touched'; exit 1; }
 grep -q 'REPO' "$S/dothome/repo/files/.bashrc" || { echo 'FAIL: repo touched'; exit 1; }
+run status | grep -q 'parked        ~/.bashrc' || { echo 'FAIL: status lacks parked'; exit 1; }
 echo 'ok: parked with markers, both sides untouched, no push attempt'
 
 echo '== parked file holds across syncs without re-asking (non-terminal too)'
@@ -51,6 +52,7 @@ echo 'ok: parked survives, no prompt, no force-resolution'
 
 echo '== hand-resolved parked copy lands on both sides; push attempted'
 printf 'line a HOST\nline b\nline c REPO\n' > "$parked"
+run status | grep -q 'resolved      ~/.bashrc' || { echo 'FAIL: status lacks resolved'; exit 1; }
 out="$(run sync)"
 echo "$out" | grep -q 'resolved' || { echo "FAIL: no resolved line"; echo "$out"; exit 1; }
 echo "$out" | grep -q 'warning: push failed' || { echo 'FAIL: push not attempted after commit'; echo "$out"; exit 1; }

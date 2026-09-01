@@ -31,9 +31,17 @@ run bind "$S/remote.git" > /dev/null
 printf 'original\n' > "$S/home/.bashrc"
 run add "$S/home/.bashrc" > /dev/null
 [ "$(git -C "$S/remote.git" rev-list --count --all)" = 0 ] || { echo 'FAIL: add pushed'; exit 1; }
+run status | grep -q 'up to date    ~/.bashrc' || { echo 'FAIL: status lacks up to date'; exit 1; }
+run status | grep -q 'to push' || { echo 'FAIL: status lacks pending pushes'; exit 1; }
 run sync > /dev/null
 [ "$(git -C "$S/remote.git" rev-list --count --all)" -gt 0 ] || { echo 'FAIL: sync did not push'; exit 1; }
-echo 'ok: add stayed local, sync pushed'
+run status | grep -q 'to push' && { echo 'FAIL: status reports pushes when remote is current'; exit 1; }
+echo 'ok: add stayed local, sync pushed, status tracked both states'
+
+echo '== status reports a host-side modification'
+printf 'tweak\n' > "$S/home/.bashrc"
+run status | grep -q 'modified      ~/.bashrc (dot sync: host -> repo)' || { echo 'FAIL: no modified line'; exit 1; }
+run sync > /dev/null
 
 echo '== flag surface: unknown flags are rejected'
 for flag in -x -m --merge; do
@@ -45,6 +53,7 @@ echo 'ok: -x, -m, --merge rejected'
 
 echo '== non-terminal stdin resolves a conflict like --force'
 conflict one
+run status | grep -q 'conflict      ~/.bashrc' || { echo 'FAIL: status lacks conflict'; exit 1; }
 out="$(run sync)"
 echo "$out" | grep -q 'host copy kept' || { echo 'FAIL: host copy not kept'; echo "$out"; exit 1; }
 [ "$(cat "$S/dothome/repo/files/.bashrc")" = 'host change one' ] || { echo 'FAIL: repo side wrong'; exit 1; }

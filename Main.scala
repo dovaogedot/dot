@@ -11,6 +11,7 @@ private enum Action {
   case Bind(url: String)
   case DoSync(mode: ConflictMode)
   case AbortSync
+  case ShowStatus
   case Add(path: String)
   case Remove(path: String)
 }
@@ -30,6 +31,10 @@ private val syncCommand: Opts[Action] =
     val chosen = force <+> abort
     chosen.withDefault(Action.DoSync(ConflictMode.Ask))
 
+private val statusCommand: Opts[Action] =
+  Opts.subcommand("status", "show every tracked file and what dot sync would do"):
+    Opts(Action.ShowStatus)
+
 private val addCommand: Opts[Action] =
   Opts.subcommand("add", "track a file, or every file inside a directory"):
     Opts.argument[String]("path").map(Action.Add(_))
@@ -42,6 +47,7 @@ private val command: Command[Action] = {
   val actions =
     bindCommand
       <+> syncCommand
+      <+> statusCommand
       <+> addCommand
       <+> removeCommand
   Command(
@@ -57,6 +63,7 @@ object Main extends IOApp {
       case Action.Bind(url)    => bind(url)
       case Action.DoSync(mode) => sync(mode)
       case Action.AbortSync    => syncAbort
+      case Action.ShowStatus   => status
       case Action.Add(path)    => add(path)
       case Action.Remove(path) => remove(path)
     program.attemptNarrow[DotError].flatMap:
