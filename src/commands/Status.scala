@@ -15,6 +15,24 @@ private def pendingPushes(layout: Layout, branch: String): IO[Int] = {
       repo.run("rev-list", "--count", "HEAD").map(_.toIntOption.getOrElse(0))
 }
 
+/**
+ * The files origin's manifest tracks. Empty when the branch was never pushed
+ * or its manifest does not decode, leaving nothing to compare against.
+ */
+private def pushedFiles(layout: Layout, branch: String): IO[Map[String, String]] =
+  Git.in(layout.repo).raw("show", s"origin/$branch:dot.json").map: out =>
+    parseManifest(out.stdout).map(_.files).getOrElse(Map.empty)
+
+/**
+ * Untrackings the remote has not seen: dot remove drops the manifest entry and
+ * commits, so a target origin still tracks and this manifest does not is one
+ * waiting to be pushed. Pairs each target with its line.
+ */
+private def removedLines(pushed: Map[String, String], manifest: Manifest): List[(String, String)] =
+  pushed.toList.collect:
+    case (repoPath, target) if !manifest.files.contains(repoPath) =>
+      target -> s"removed       $target (untracked; dot sync pushes the removal)"
+
 private def freshLine(facts: Facts): String = decide(facts) match
   case Detected.Clean =>
     s"up to date    ${facts.target}"
@@ -29,7 +47,7 @@ private def freshLine(facts: Facts): String = decide(facts) match
       s"modified      ${facts.target} (dot sync: host -> repo)"
   case Detected.ToHost =>
     if facts.hostHash.isEmpty then
-      s"removed       ${facts.target} (on host; dot sync reinstalls it)"
+      s"missing       ${facts.target} (gone from the host; dot sync reinstalls it — dot remove to untrack)"
     else
       s"modified      ${facts.target} (dot sync: repo -> host)"
 
@@ -51,15 +69,18 @@ def status: IO[String] = {
     manifest <- loadManifest(layout)
     state    <- loadState(layout)
 
-    lines <- manifest.files.toList.sortBy(_._2).traverse: (repoPath, target) =>
+    tracked <- manifest.files.toList.traverse: (repoPath, target) =>
       gather(layout, state, repoPath, target).flatMap: facts =>
-        statusLine(layout, facts)
+        statusLine(layout, facts).map(target -> _)
 
     branch  <- Git.in(layout.repo).run("symbolic-ref", "--short", "HEAD")
+    pushed  <- pushedFiles(layout, branch)
     pending <- pendingPushes(layout, branch)
 
-    tracked = if lines.isEmpty then List("nothing tracked — dot add <path>") else Nil
+    shown   = tracked ::: removedLines(pushed, manifest)
+    lines   = shown.sortBy(_._1).map(_._2)
+    nothing = if manifest.files.isEmpty then List("nothing tracked — dot add <path>") else Nil
     pushes  = if pending > 0 then List(s"$pending commit(s) to push — dot sync pushes them") else Nil
-    all     = lines ::: tracked ::: pushes
+    all     = lines ::: nothing ::: pushes
   yield all.mkString("\n")
 }

@@ -71,11 +71,14 @@ private val printer = Printer.spaces2.copy(colonLeft = "")
 private def serialize(files: Map[String, String]): String =
   printer.print(Doc(1, SortedMap.from(files)).asJson) + "\n"
 
+/** Decodes manifest text; a malformed document or an unsupported version is a Config error. */
+def parseManifest(text: String): Either[DotError, Manifest] = decodeDoc(text, "dot.json").map(Manifest(_))
+
 def loadManifest(layout: Layout): IO[Manifest] = {
   val missing = DotError.Config(s"no manifest at ${layout.manifestPath} — run: dot bind <repo>")
   readTextIfExists(layout.manifestPath).flatMap:
     case None       => IO.raiseError(missing)
-    case Some(text) => IO.fromEither(decodeDoc(text, "dot.json")).map(Manifest(_))
+    case Some(text) => IO.fromEither(parseManifest(text))
 }
 
 def saveManifest(layout: Layout, m: Manifest): IO[Unit] =
