@@ -62,8 +62,7 @@ extension (git: Git) {
   /** Stages everything and commits if the tree changed; resolves to whether a commit was made. */
   def commitIfChanged(message: String): IO[Boolean] = {
     val commit = run("status", "--porcelain").flatMap: status =>
-      if status.isEmpty then IO.pure(false)
-      else run("commit", "-m", message).as(true)
+      if status.isEmpty then IO.pure(false) else run("commit", "-m", message).as(true)
     run("add", "-A") *> commit
   }
 

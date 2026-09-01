@@ -59,8 +59,10 @@ private final case class Doc(version: Int, files: Map[String, String]) derives C
 private def decodeDoc(text: String, what: String): Either[DotError, Map[String, String]] = {
   val doc = parser.decode[Doc](text).leftMap(e => DotError.Config(s"$what: ${e.getMessage}"))
   doc.flatMap: d =>
-    if d.version == 1 then Right(d.files)
-    else Left(DotError.Config(s"$what: unsupported version ${d.version}"))
+    if d.version == 1 then
+      Right(d.files)
+    else
+      Left(DotError.Config(s"$what: unsupported version ${d.version}"))
 }
 
 /** Prints two-space indented JSON with JavaScript-style `"key": value` colons. */

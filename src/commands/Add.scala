@@ -30,8 +30,7 @@ private def listFiles(layout: Layout, abs: String): IO[List[String]] = {
 
 private def addReport(added: List[Added], skipped: List[Added]): String = {
   val committed =
-    if added.isEmpty then Nil
-    else List(s"committed ${added.length} file(s) — dot sync pushes them")
+    if added.isEmpty then Nil else List(s"committed ${added.length} file(s) — dot sync pushes them")
   val tracking = added.map: a =>
     s"tracking ${a.target}"
   val already = skipped.map: s =>
@@ -70,7 +69,9 @@ def add(raw: String): IO[String] = {
     (skipped, added) = entries.partition(e => manifest.files.contains(e.repoPath))
 
     report <-
-      if added.isEmpty then IO.pure(addReport(added, skipped))
-      else commitAdded(layout, manifest, entries, added, skipped)
+      if added.isEmpty then
+        IO.pure(addReport(added, skipped))
+      else
+        commitAdded(layout, manifest, entries, added, skipped)
   yield report
 }

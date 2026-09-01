@@ -18,8 +18,10 @@ def fileKind(path: String): IO[FileKind] = {
   Files[IO]
     .exists(p)
     .flatMap { there =>
-      if !there then IO.pure(FileKind.Missing)
-      else Files[IO].isDirectory(p).map(dir => if dir then FileKind.Directory else FileKind.RegularFile)
+      if !there then
+        IO.pure(FileKind.Missing)
+      else
+        Files[IO].isDirectory(p).map(dir => if dir then FileKind.Directory else FileKind.RegularFile)
     }
     .orIoError("stat", path)
 }

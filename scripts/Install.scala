@@ -48,9 +48,12 @@ private def compileNative(out: String): IO[Unit] = {
 
 /** The path as the config line spells it: under home it travels as $HOME. */
 private def portableEntry(dir: String, home: String): String =
-  if dir == home then "$HOME"
-  else if dir.startsWith(home + "/") then "$HOME/" + dir.drop(home.length + 1)
-  else dir
+  if dir == home then
+    "$HOME"
+  else if dir.startsWith(home + "/") then
+    "$HOME/" + dir.drop(home.length + 1)
+  else
+    dir
 
 private def exportLine(entry: String): String = "export PATH=\"" + entry + ":$PATH\""
 
@@ -85,7 +88,8 @@ private def appendLine(text: Option[String], line: String): String =
  */
 private def ensureOnPath(home: String, dir: String): IO[String] = {
   val entries = envGet("PATH").getOrElse("").split(File.pathSeparator)
-  if entries.contains(dir) then IO.pure("")
+  if entries.contains(dir) then
+    IO.pure("")
   else
     val shellPath = envGet("SHELL").getOrElse("").toSlash
     RC_BY_SHELL.get(shellPath.drop(shellPath.lastIndexOf('/') + 1)) match
@@ -118,8 +122,7 @@ private def install: IO[String] = {
     _    <- compileNative(binDir + "/dot")
     note <- ensureOnPath(home, binDir)
   yield
-    if note.isEmpty then s"installed dot to $display"
-    else s"installed dot to $display\n$note"
+    if note.isEmpty then s"installed dot to $display" else s"installed dot to $display\n$note"
 }
 
 object Install extends IOApp {

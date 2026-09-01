@@ -125,8 +125,10 @@ private def readLineRaw: Option[String] = {
     if b < 0 then
       if bytes.isEmpty then eof = true
       done = true
-    else if b == 10 then done = true
-    else if b != 13 then bytes += b.toByte
+    else if b == 10 then
+      done = true
+    else if b != 13 then
+      bytes += b.toByte
   if eof then None else Some(String(bytes.toArray, UTF_8))
 }
 
@@ -205,7 +207,8 @@ private def resolveConflict(ctx: SyncCtx, facts: Facts): IO[Outcome] = {
   ctx.mode match
     case ConflictMode.Force => keepLocal
     case ConflictMode.Ask   =>
-      if !ctx.interactive then keepLocal
+      if !ctx.interactive then
+        keepLocal
       else
         askChoice(facts.target).flatMap:
           case Choice.Local => keepLocal
@@ -294,9 +297,12 @@ private def aheadOfRemote(layout: Layout, branch: String): IO[Boolean] =
 private def pull(layout: Layout, branch: String): IO[Boolean] = {
   val args = List("pull", "--rebase", "--autostash", "origin", branch)
   Git.in(layout.repo).raw(args*).flatMap: out =>
-    if out.code == 0 then IO.pure(true)
-    else if out.stderr.contains("couldn't find remote ref") then IO.pure(false)
-    else IO.raiseError(DotError.Git(args, out.errorText))
+    if out.code == 0 then
+      IO.pure(true)
+    else if out.stderr.contains("couldn't find remote ref") then
+      IO.pure(false)
+    else
+      IO.raiseError(DotError.Git(args, out.errorText))
 }
 
 private def requireBound(layout: Layout): IO[Unit] = {
@@ -384,11 +390,11 @@ def syncAbort: IO[String] = {
     there  <- exists(layout.conflictsDir)
 
     message <-
-      if !there then IO.pure("no parked conflicts")
+      if !there then
+        IO.pure("no parked conflicts")
       else
         walkFiles(layout.conflictsDir).flatMap: files =>
           removeTreeIfExists(layout.conflictsDir).as:
-            if files.isEmpty then "no parked conflicts"
-            else s"discarded ${files.length} parked conflict(s)"
+            if files.isEmpty then "no parked conflicts" else s"discarded ${files.length} parked conflict(s)"
   yield message
 }
