@@ -1,0 +1,23 @@
+# Maintainer: Vladyslav Havrilov <vladyslav@toucanroyale.com>
+# Template: the release workflow fills the version and checksums and attaches the result to the release.
+pkgname=dotup-bin
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="Sync config files between machines through a git repository"
+arch=('x86_64' 'aarch64')
+url="https://github.com/dovaogedot/dot"
+license=('MIT')
+depends=('glibc' 'zlib' 'git')
+provides=('dotup')
+conflicts=('dotup')
+source=("LICENSE-$pkgver::$url/raw/v$pkgver/LICENSE")
+source_x86_64=("dotup-$pkgver-x86_64::$url/releases/download/v$pkgver/dotup-linux-x64")
+source_aarch64=("dotup-$pkgver-aarch64::$url/releases/download/v$pkgver/dotup-linux-arm64")
+sha256sums=('@SHA256_LICENSE@')
+sha256sums_x86_64=('@SHA256_X64@')
+sha256sums_aarch64=('@SHA256_ARM64@')
+
+package() {
+  install -Dm755 "dotup-$pkgver-$CARCH" "$pkgdir/usr/bin/dotup"
+  install -Dm644 "LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

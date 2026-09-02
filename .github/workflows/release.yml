@@ -1,0 +1,82 @@
+# Release: on a v* tag, build the native binary on every platform, publish a GitHub release with
+# the binaries, their checksums and the rendered AUR PKGBUILD, then publish the npm packages.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: linux-x64 }
+          - { os: ubuntu-24.04-arm, target: linux-arm64 }
+          - { os: macos-15, target: darwin-arm64 }
+          - { os: macos-15-intel, target: darwin-x64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag must match VERSION
+        run: grep -q "val VERSION = \"${GITHUB_REF_NAME#v}\"" Main.scala
+      - uses: VirtusLab/scala-cli-setup@v1
+      - name: Native toolchain
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential zlib1g-dev
+      - name: Build
+        run: scala-cli --power package --native-image . -o dotup -f --graalvm-args --no-fallback
+      - name: Smoke test
+        run: ./dotup version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dotup-${{ matrix.target }}
+          path: dotup
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Assets, checksums and PKGBUILD
+        run: |
+          mkdir dist
+          for dir in artifacts/dotup-*; do cp "$dir/dotup" "dist/${dir#artifacts/}"; done
+          (cd dist && sha256sum dotup-* > SHA256SUMS)
+          sed -e "s/@VERSION@/${GITHUB_REF_NAME#v}/" \
+              -e "s/@SHA256_X64@/$(sha256sum dist/dotup-linux-x64 | cut -d' ' -f1)/" \
+              -e "s/@SHA256_ARM64@/$(sha256sum dist/dotup-linux-arm64 | cut -d' ' -f1)/" \
+              -e "s/@SHA256_LICENSE@/$(sha256sum LICENSE | cut -d' ' -f1)/" \
+              packaging/aur/PKGBUILD > dist/PKGBUILD
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+
+  npm:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Assemble the packages
+        run: node npm/assemble.mjs "${GITHUB_REF_NAME#v}" artifacts dist/npm
+      - name: Publish the platform packages, then the main one
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for pkg in dist/npm/dotup-*; do npm publish "$pkg" --access public; done
+          npm publish dist/npm/dotup --access public

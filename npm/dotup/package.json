@@ -1,0 +1,21 @@
+{
+  "name": "dotup",
+  "version": "0.0.0",
+  "description": "Sync config files between machines through a git repository",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dovaogedot/dot.git"
+  },
+  "homepage": "https://github.com/dovaogedot/dot",
+  "bin": {
+    "dotup": "bin/dotup.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {}
+}

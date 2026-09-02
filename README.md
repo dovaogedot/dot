@@ -2,21 +2,33 @@
 
 Sync config files between machines through a git repository. Written in Scala 3
 with Cats Effect, fs2, Circe and Decline. Built with the `scala` runner from a
-plain `project.scala`, without sbt. The installed binary needs only git at run
-time.
+plain `project.scala`, without sbt. The binary needs only git at run time.
 
 ## Install
 
+With npm, on Linux (x64, arm64) or macOS (arm64, x64):
+
 ```sh
-git clone <this repo> && cd dot && scala run . -M dot.Install
+npm install -g dotup    # or run it without installing: npx dotup status
+```
+
+On Arch Linux, from the AUR:
+
+```sh
+yay -S dotup-bin
+```
+
+From source, with the `scala` runner (3.5 or newer) and git installed:
+
+```sh
+git clone https://github.com/dovaogedot/dot && cd dot && scala run . -M dot.Install
 ```
 
 The installer builds a native binary (GraalVM native-image) and puts it in
-`~/.local/bin/dotup`. The binary runs without the clone and without a JVM. If
-`~/.local/bin` is not on `PATH`, the installer adds the export line to the
-config file of the current shell (bash, zsh or fish). The build needs the
-`scala` runner (3.5 or newer) and git. The compiler, the libraries and the
-native-image toolchain are downloaded automatically.
+`~/.local/bin/dotup`. If `~/.local/bin` is not on `PATH`, it adds the export
+line to the config file of the current shell (bash, zsh or fish). The compiler,
+the libraries and the native-image toolchain are downloaded automatically. The
+binary runs without the clone and without a JVM.
 
 ## Use
 
@@ -84,3 +96,15 @@ directory is not tracked automatically. Run `dotup add` on it.
 end-to-end tests run the installed binary inside a temporary home with its own
 bare remote, one per test. `DOT_BIN=<path>` points them at another build.
 `--test-only dot.ParkSuite` runs one suite.
+
+## Releasing
+
+1. Set `VERSION` in `Main.scala` to the new version, commit, and tag the commit
+   `v<version>`. Push the branch and the tag.
+2. The release workflow builds the binaries for Linux (x64, arm64) and macOS
+   (arm64, x64), attaches them to a GitHub release together with `SHA256SUMS`
+   and a rendered `PKGBUILD`, and publishes the npm packages `dotup` and
+   `dotup-<platform>`. Publishing needs an `NPM_TOKEN` repository secret with
+   publish rights.
+3. For the AUR, copy the `PKGBUILD` from the release into the `dotup-bin` AUR
+   repository, run `makepkg --printsrcinfo > .SRCINFO`, commit and push.
