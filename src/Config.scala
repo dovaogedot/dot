@@ -115,6 +115,9 @@ private object Doc {
  */
 final case class Manifest(files: Map[String, Target]) {
 
+  /** Whether the target is tracked. */
+  def tracks(target: Target): Boolean = files.contains(target.repoPath)
+
   def save(layout: Layout): IO[Unit] =
     files.view.mapValues(_.value).toMap
       |> Doc.render

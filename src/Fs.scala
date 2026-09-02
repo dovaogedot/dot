@@ -95,4 +95,10 @@ extension (path: Path) {
       .map(d => Some(d.bytes.toArray.map(b => f"${b & 0xff}%02x").mkString))
       .recover { case _: NoSuchFileException => None }
       .orIoError("hash", path.toString)
+
+  /** The SHA-256 hash of the file as a hex string. A missing file is an Io error. */
+  def sha256: IO[String] = {
+    val missing = DotError.Io("hash", path.toString, "no such file")
+    sha256IfExists.flatMap(IO.fromOption(_)(missing))
+  }
 }

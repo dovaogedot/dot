@@ -25,6 +25,18 @@ object ConflictSuite extends SandboxSuite {
         && current.lacks("to push")
   }
 
+  sandboxed("adding a tracked file reports it and leaves the repo copy alone") { sb =>
+    for
+      _    <- sb.track(rc, "original\n")
+      _    <- sb.host(rc).writeText("edited\n")
+      out  <- sb.dot("add", sb.host(rc))
+      repo <- sb.repoCopy(rc).readText
+    yield
+      out.has("already tracked: ~/.bashrc")
+        && out.lacks("committed")
+        && expect.same("original\n", repo)
+  }
+
   sandboxed("status reports a host-side modification") { sb =>
     for
       _      <- sb.track(rc, "original\n")
