@@ -6,14 +6,28 @@ import cats.syntax.all.*
 import com.monovore.decline.{Command, Opts}
 import java.io.{OutputStream, PrintStream}
 
+/** The version that dot prints. */
 val VERSION = "0.2.0"
 
+/** The action that one command line asks for. */
 private enum Action {
+
+  /** dot bind: connect this host to the remote at url. */
   case Bind(url: String)
+
+  /** dot sync: mode says how to handle a file that changed on both sides. */
   case DoSync(mode: ConflictMode)
+
+  /** dot sync --abort: discard every parked conflict. */
   case AbortSync
+
+  /** dot status: report every tracked file. */
   case ShowStatus
+
+  /** dot add: track the file or directory at path. */
   case Add(path: String)
+
+  /** dot remove: stop tracking the file or directory at path. */
   case Remove(path: String)
 }
 
@@ -44,6 +58,7 @@ private val removeCommand: Opts[Action] =
   Opts.subcommand("remove", "stop tracking a file or directory (host copies stay)"):
     Opts.argument[String]("path").map(Action.Remove(_))
 
+/** The parser for the full command line: dot with all its subcommands. */
 private val command: Command[Action] = {
   val actions =
     bindCommand
@@ -59,13 +74,14 @@ private val command: Command[Action] = {
   )(actions)
 }
 
-/** Swaps the process streams for a null sink, so every later write disappears. */
+/** Replaces the chosen output streams with a sink that drops everything written to it. */
 private def silence(out: Boolean, err: Boolean): IO[Unit] = IO.blocking {
   val sink = PrintStream(OutputStream.nullOutputStream)
   if out then System.setOut(sink)
   if err then System.setErr(sink)
 }
 
+/** Entry point. Parses the command line, runs the action, and prints the result or the error. */
 object Main extends IOApp {
   private def execute(action: Action): IO[ExitCode] = {
     val program: IO[String] = action match
@@ -80,6 +96,7 @@ object Main extends IOApp {
       case Left(error)    => Console[IO].errorln(error.render).as(ExitCode.Error)
   }
 
+  /** Handles the -q and -s flags, then runs the rest of the command line. */
   def run(args: List[String]): IO[ExitCode] = {
     val quiet = args.exists(arg => arg == "-q" || arg == "--quiet")
     val shush = args.exists(arg => arg == "-s" || arg == "--shush")

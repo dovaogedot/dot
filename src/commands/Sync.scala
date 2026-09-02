@@ -8,9 +8,7 @@ import java.lang.ProcessBuilder.Redirect
 import java.nio.charset.StandardCharsets.UTF_8
 import mouse.all.*
 
-/** dot sync: pull, reconcile every tracked file with the host, commit, push. */
-
-/** What the three-way comparison detects for one tracked file. */
+/** The result of the three-way comparison for one tracked file. */
 private enum Detected {
 
   /** Both copies hold the same content. */
@@ -41,33 +39,33 @@ private enum Plan {
   /** The repo copy was installed on the host. */
   case ToHost
 
-  /** Both sides had changed; the host copy was kept and overwrote the repo copy. */
+  /** Both sides had changed. The host copy was kept and replaced the repo copy. */
   case Conflict
 
-  /** Both sides had changed; the repo copy was kept and overwrote the host copy. */
+  /** Both sides had changed. The repo copy was kept and replaced the host copy. */
   case ConflictRepo
 
-  /** Both sides had changed; a conflict-marked copy waits under conflictsDir, both sides untouched. */
+  /** Both sides had changed. A copy with conflict markers waits in conflictsDir, and both sides stay as they are. */
   case Parked
 
-  /** A hand-edited parked copy was applied to both sides. */
+  /** A parked copy, fixed by hand, was applied to both sides. */
   case Resolved
 
-  /** Neither side has the file; the manifest entry is stale. */
+  /** Neither side has the file. The manifest entry is stale. */
   case Missing
 }
 
-/** How a both-sides-changed file is resolved. */
+/** How a file that changed on both sides is resolved. */
 enum ConflictMode {
 
-  /** Prompt per file when stdin is a terminal; keep the host copy otherwise. */
+  /** Ask for each file if stdin is a terminal. Otherwise keep the host copy. */
   case Ask
 
   /** Keep the host copy without asking. */
   case Force
 }
 
-/** What is known about one tracked file: both copies' hashes and the hash recorded at the last sync. */
+/** What is known about one tracked file: the hashes of both copies, and the hash recorded at the last sync. */
 private final case class Facts(
   repoPath: String,
   target: Target,
@@ -78,9 +76,8 @@ private final case class Facts(
 ) {
 
   /**
-   * Three-way comparison against the hash recorded at the last sync: an
-   * unchanged side yields to the changed one; a change on both sides is a
-   * conflict.
+   * Three-way comparison with the hash recorded at the last sync. The side that did not change takes
+   * the content of the side that changed. A change on both sides is a conflict.
    */
   def decide: Detected = (repoHash, hostHash) match
     case (None, None)                               => Detected.Missing
@@ -91,11 +88,13 @@ private final case class Facts(
     case (_, Some(host)) if baseHash.contains(host) => Detected.ToHost
     case _                                          => Detected.Conflict
 
+  /** The outcome for this file after plan, with hash as the content both sides now have. */
   def outcome(plan: Plan, hash: Option[String]): Outcome = Outcome(plan, repoPath, target, hash)
 }
 
 private object Facts {
 
+  /** Reads the hashes of both copies for one manifest entry, and the hash recorded at the last sync. */
   def gather(layout: Layout, state: SyncState, repoPath: String, target: Target): IO[Facts] = {
     val hostPath = target.expand(layout.home)
     for
@@ -105,15 +104,16 @@ private object Facts {
   }
 }
 
+/** What sync did to one tracked file. */
 private final case class Outcome(
   plan: Plan,
   repoPath: String,
   target: Target,
-  /** Hash both sides hold after the action; None drops the state entry. */
+  /** The hash both sides have after the action. None removes the state entry. */
   hash: Option[String],
 ) {
 
-  /** The report line for this file; None when nothing changed. */
+  /** The report line for this file. None if nothing changed. */
   def line(recover: Option[String], parkedAt: String): Option[String] = plan match
     case Plan.Clean    => None
     case Plan.ToRepo   => Some(s"host -> repo  $target")
@@ -133,15 +133,15 @@ private final case class Outcome(
       Some(s"missing       $target (gone on host and in repo; dot remove to untrack)")
 }
 
-/** The process's standard input, read without the JVM's buffering so reads consume only what they return. */
+/** The standard input of the process, read without the JVM buffer, so a read takes only the bytes it returns. */
 private object Stdin {
 
+  /** Standard input with no buffer in front of it. */
   private val raw = FileInputStream(FileDescriptor.in)
 
   /**
-   * Reads one line, one byte per read so nothing past the newline is consumed
-   * — a later prompt still sees lines typed or pasted ahead. None at end of
-   * input.
+   * Reads one line, one byte at a time, so nothing after the newline is taken. A later prompt still
+   * sees lines that were typed or pasted ahead. None at the end of input.
    */
   def readLine: Option[String] = {
     val bytes = scala.collection.mutable.ArrayBuffer.empty[Byte]
@@ -160,9 +160,8 @@ private object Stdin {
   }
 
   /**
-   * Whether the input is attached to a terminal, probed through a child
-   * process that inherits the descriptor; an unprobeable platform falls back
-   * to the JVM console check.
+   * Whether stdin is a terminal. A child process that inherits stdin checks it. If that check cannot
+   * run, the JVM console check is used.
    */
   val isTerminal: IO[Boolean] = IO.blocking {
     try
@@ -174,21 +173,22 @@ private object Stdin {
   }
 }
 
-/** The resolutions the conflict menu offers. */
+/** The choices the conflict menu offers. */
 private enum Choice {
 
-  /** Keep the host copy; the repo copy stays retrievable from git history. */
+  /** Keep the host copy. The repo copy stays in git history. */
   case Local
 
-  /** Keep the repo copy; the host copy is overwritten. */
+  /** Keep the repo copy. The host copy is replaced. */
   case Repo
 
-  /** Park a conflict-marked copy to resolve by hand; both sides stay. */
+  /** Park a copy with conflict markers, to fix by hand. Both sides stay as they are. */
   case Skip
 }
 
 private object Choice {
 
+  /** The choice for each accepted menu input. */
   val byInput: Map[String, Choice] = Map(
     "l"     -> Local,
     "local" -> Local,
@@ -198,14 +198,14 @@ private object Choice {
     "skip"  -> Skip,
   )
 
-  def menu(target: Target): String = {
+  /** The prompt text with the choices for target. */
+  def menu(target: Target): String =
     s"conflict: $target changed both on this host and in the repo\n"
       + "  [l] keep local — the host copy wins; the repo copy stays in git history\n"
       + "  [r] keep repo  — overwrites the host copy\n"
       + "  [s] skip — park a conflict-marked copy to resolve by hand; both sides stay"
-  }
 
-  /** Reads one resolution from the terminal; end of input counts as skip. */
+  /** Reads one choice from the terminal. End of input counts as skip. */
   def ask(target: Target): IO[Choice] =
     IO.blocking {
       println(menu(target))
@@ -227,20 +227,20 @@ extension (text: String) {
 
 extension (src: Path) {
 
-  /** Copies onto a host path; a permission failure names the sudo command that applies it by hand. */
+  /** Copies to a host path. On a permission error, the message names the sudo command that does the copy by hand. */
   private def copyToHost(hostPath: Path): IO[Unit] =
     src.copyTo(hostPath).adaptError:
       case e: DotError.Io if e.cause == "permission denied" =>
         DotError.Io(e.op, e.path, s"permission denied — run: sudo cp $src $hostPath")
 }
 
-/** Everything constant across one sync run that reconciling a file needs. */
+/** The values that stay the same during one sync run and that reconciling a file needs. */
 private final case class SyncCtx(layout: Layout, mode: ConflictMode, interactive: Boolean) {
 
   /**
-   * Writes a conflict-marked merge of the host and repo copies (empty merge
-   * base, so shared lines pass through and differing regions become marked
-   * hunks) to the parked path. Both originals stay untouched.
+   * Writes a merge of the host and repo copies, with conflict markers, to the parked path. The merge
+   * base is empty, so equal lines pass through and different regions become marked conflicts. Both
+   * originals stay as they are.
    */
   def park(facts: Facts): IO[Unit] = {
     val base   = layout.root / "tmp-merge-base"
@@ -258,10 +258,9 @@ private final case class SyncCtx(layout: Layout, mode: ConflictMode, interactive
   }
 
   /**
-   * A both-sides-changed file: Force (or a non-terminal stdin under Ask) keeps
-   * the host copy, Ask lets the user pick the resolution per file. The host
-   * copy is the only side git history cannot restore, so every path that
-   * discards it is an explicit choice.
+   * Resolves a file that changed on both sides. Force keeps the host copy. Ask lets the user choose
+   * for each file, but keeps the host copy if stdin is not a terminal. The host copy is the only side
+   * git history cannot restore, so it is discarded only by an explicit choice.
    */
   def resolveConflict(facts: Facts): IO[Outcome] = {
     val repoFile  = layout.repoFile(facts.repoPath)
@@ -281,10 +280,10 @@ private final case class SyncCtx(layout: Layout, mode: ConflictMode, interactive
   }
 
   /**
-   * A parked file overrides every mode: markers gone means the user resolved
-   * it, so the content lands on both sides; markers still present hold the
-   * conflict without re-asking. A parked file whose conflict no longer exists
-   * is dropped.
+   * Reconciles one file. A parked copy comes first, in every mode. If its conflict markers are gone,
+   * the user fixed it, and the content goes to both sides. If the markers are still there, the
+   * conflict stays parked and the user is not asked again. A parked copy is dropped if its conflict no
+   * longer exists.
    */
   def reconcile(facts: Facts): IO[Outcome] = {
     val repoFile   = layout.repoFile(facts.repoPath)
@@ -315,6 +314,7 @@ private final case class SyncCtx(layout: Layout, mode: ConflictMode, interactive
   }
 }
 
+/** The report for one run: one line per changed file, the count of files that are up to date, and the push status. */
 private def summarize(
   layout: Layout,
   outcomes: List[Outcome],
@@ -344,7 +344,8 @@ private def summarize(
   lines.mkString("\n")
 }
 
-def sync(mode: ConflictMode): IO[String] = {
+/** dot sync: pulls, reconciles every tracked file with the host using mode, commits, and pushes. Returns the report. */
+def sync(mode: ConflictMode): IO[String] =
   for
     layout      <- Layout.resolve
     _           <- layout.requireBound
@@ -384,10 +385,9 @@ def sync(mode: ConflictMode): IO[String] = {
       then repo.pushBestEffort
       else IO.pure(None)
   yield summarize(layout, outcomes, pending && warning.isEmpty, warning, preSync)
-}
 
-/** dot sync --abort: discards every parked conflict; host and repo copies stay as they are. */
-def syncAbort: IO[String] = {
+/** dot sync --abort: discards every parked conflict. Host and repo copies stay as they are. */
+def syncAbort: IO[String] =
   for
     layout <- Layout.resolve
     there  <- layout.conflictsDir.isPresent
@@ -402,4 +402,3 @@ def syncAbort: IO[String] = {
             then "no parked conflicts"
             else s"discarded ${files.length} parked conflict(s)"
   yield message
-}

@@ -1,8 +1,9 @@
 # dot
 
-Sync config files across machines through a git repository. Scala 3 + Cats
-Effect + fs2 + Circe + Decline, built with the `scala` runner from a plain
-`project.scala` — no sbt. The installed binary needs only git at runtime.
+Sync config files between machines through a git repository. Written in Scala 3
+with Cats Effect, fs2, Circe and Decline. Built with the `scala` runner from a
+plain `project.scala`, without sbt. The installed binary needs only git at run
+time.
 
 ## Install
 
@@ -10,12 +11,12 @@ Effect + fs2 + Circe + Decline, built with the `scala` runner from a plain
 git clone <this repo> && cd dot && scala run . -M dot.Install
 ```
 
-Packages a self-contained native binary (GraalVM native-image) into
-`~/.local/bin`; the binary runs without the clone or a JVM. When
-`~/.local/bin` is not on `PATH`, the installer appends the export to the
-current shell's config (bash, zsh, or fish). Building requires the `scala`
-runner (3.5+) and git; the compiler, libraries, and native-image toolchain
-resolve automatically.
+The installer builds a native binary (GraalVM native-image) and puts it in
+`~/.local/bin`. The binary runs without the clone and without a JVM. If
+`~/.local/bin` is not on `PATH`, the installer adds the export line to the
+config file of the current shell (bash, zsh or fish). The build needs the
+`scala` runner (3.5 or newer) and git. The compiler, the libraries and the
+native-image toolchain are downloaded automatically.
 
 ## Use
 
@@ -31,34 +32,36 @@ dot remove ~/.bashrc                      # untrack (the host copy stays)
 
 ## How sync works
 
-- Pulls the repo, then compares each tracked file on the host with the repo
-  copy, using the content hash recorded at the previous sync to tell which side
+- Sync pulls the repo. Then it compares each tracked file on the host with the
+  copy in the repo. The content hash saved at the last sync tells which side
   changed.
-- One side changed: that side wins. Both sides changed: dot asks per file —
-  keep the local copy, keep the repo copy, or skip (parking the conflict).
-  `-f` / `--force` keeps the local copy without asking, and a non-terminal
-  stdin behaves like `--force`. A kept local copy overwrites the repo copy,
-  which stays in git history — the sync prints the command that retrieves it.
-- Skipping parks a conflict-marked copy of the file under
-  `~/.dot/conflicts/<repo path>` and leaves both sides untouched. Edit the
-  parked copy until the `<<<<<<<` markers are gone; the next `dot sync` applies
-  it to both host and repo. While markers remain, sync reports the file without
-  asking again — a parked file also overrides `-f`. `dot sync --abort` discards
-  every parked copy. A host copy the file system's permissions reject fails
-  with the `sudo cp` command that applies it by hand.
-- Missing on the host: installed from the repo. Anything the host changed is
-  committed, so the repo holds the latest state of every host. The push runs
-  only when the remote lacks commits — a sync that changes nothing stays
-  local-only.
-- `sync` is the only command that talks to the remote (besides `bind`, which
-  clones it). `add` and `remove` commit locally; the next `dot sync` pushes
+- If one side changed, that side wins. If both sides changed, dot asks for each
+  file: keep the local copy, keep the repo copy, or skip and park the conflict.
+  `-f` / `--force` keeps the local copy without asking. When stdin is not a
+  terminal, sync acts like `--force`. A kept local copy replaces the repo copy.
+  The old repo copy stays in git history, and sync prints the command that
+  shows it.
+- Skip parks a copy of the file with conflict markers under
+  `~/.dot/conflicts/<repo path>`. Both sides stay as they are. Edit the parked
+  copy until all `<<<<<<<` markers are gone. The next `dot sync` applies it to
+  both the host and the repo. While markers remain, sync reports the file and
+  does not ask again. A parked file also wins over `-f`. `dot sync --abort`
+  deletes every parked copy. If file permissions block a write to the host copy,
+  sync fails and prints the `sudo cp` command that does it by hand.
+- A file missing on the host is installed from the repo. Every change made on
+  the host is committed, so the repo holds the latest state of every host. Sync
+  pushes only when the remote is missing commits. A sync that changes nothing
+  stays local.
+- `sync` is the only command that talks to the remote. `bind` also does, once,
+  to clone it. `add` and `remove` commit locally. The next `dot sync` pushes
   their commits.
 
 ## Layout
 
-Data lives in `~/.dot` (override with `DOT_HOME`): the clone at `~/.dot/repo`,
-per-host sync state at `~/.dot/state.json`, parked conflicts under
-`~/.dot/conflicts`. The repo maps its files to host destinations in `dot.json`:
+Data lives in `~/.dot`. Set `DOT_HOME` to use another directory. The clone is
+at `~/.dot/repo`, the sync state of this host at `~/.dot/state.json`, and parked
+conflicts under `~/.dot/conflicts`. The file `dot.json` in the repo maps each
+repo file to its place on the host:
 
 ```json
 {
@@ -70,15 +73,14 @@ per-host sync state at `~/.dot/state.json`, parked conflicts under
 }
 ```
 
-Targets under the home directory travel as `~/...`, so hosts with different
-usernames share one manifest. Files created later inside a tracked directory are
-not picked up automatically — run `dot add` on them.
+A target under the home directory is written as `~/...`, so hosts with
+different user names share one manifest. A file created later inside a tracked
+directory is not tracked automatically. Run `dot add` on it.
 
 ## Development
 
-`scala compile .` type-checks the project; `scala fmt .` formats it per
-`.scalafmt.conf`. `scala test .` runs the weaver suites under `test/`: the
-style gate, and the end-to-end scenarios, which spawn the installed binary
-(`DOT_BIN=<path>` points them at another build) inside a throwaway home with
-its own bare remote, one per test. `--test-only dot.ParkSuite` narrows the run
-to one suite.
+`scala compile .` type-checks the project. `scala fmt .` formats it with
+`.scalafmt.conf`. `scala test .` runs the weaver suites under `test/`. The
+end-to-end tests run the installed binary inside a temporary home with its own
+bare remote, one per test. `DOT_BIN=<path>` points them at another build.
+`--test-only dot.ParkSuite` runs one suite.

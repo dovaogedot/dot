@@ -2,7 +2,7 @@ package dot
 
 import cats.syntax.all.*
 
-/** Conflict handling end to end: the flag surface, the non-terminal force rule, and the interactive menu. */
+/** Conflict handling from end to end: the flags, the rule for a non-terminal stdin, and the interactive menu. */
 object ConflictSuite extends SandboxSuite {
 
   private val rc = ".bashrc"
@@ -49,8 +49,10 @@ object ConflictSuite extends SandboxSuite {
     List("-x", "-m", "--merge").traverse(rejected(sb)).map(_.combineAll)
   }
 
+  /** Expects dot sync to reject the flag. */
   private def rejected(sb: Sandbox)(flag: String) =
-    sb.tryDot("sync", flag).map(run => check(run.code != 0, s"sync $flag accepted"))
+    sb.tryDot("sync", flag).map: run =>
+      check(run.code != 0, s"sync $flag accepted")
 
   sandboxed("-q suppresses stdout; -s suppresses stderr as well") { sb =>
     for

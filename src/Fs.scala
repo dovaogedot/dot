@@ -3,11 +3,11 @@ package dot
 import cats.effect.IO
 import cats.syntax.all.*
 import fs2.Stream
-import fs2.hashing.{HashAlgorithm, Hashing}
+import fs2.hashing.{Hash, HashAlgorithm, Hashing}
 import fs2.io.file.{CopyFlag, CopyFlags, Files, Path}
 import java.nio.file.{AccessDeniedException, NoSuchFileException}
 
-/** File-system effects over fs2 Files; failures surface as DotError.Io. */
+/** File system operations built on fs2 Files. Failures are reported as DotError.Io. */
 
 enum FileKind {
 
@@ -21,19 +21,24 @@ enum FileKind {
   case Directory
 }
 
+extension (hash: Hash) {
+
+  /** The hash bytes as a lowercase hex string. */
+  private def hex: String = hash.bytes.toArray.map(b => f"${b & 0xff}%02x").mkString
+}
+
 extension (path: Path) {
 
-  def fileKind: IO[FileKind] =
-    Files[IO]
-      .exists(path)
-      .ifM(
-        Files[IO].isDirectory(path).ifF(FileKind.Directory, FileKind.RegularFile),
-        IO.pure(FileKind.Missing),
-      )
-      .orIoError("stat", path.toString)
+  /** What exists at the path: nothing, a regular file, or a directory. */
+  def fileKind: IO[FileKind] = {
+    val present = Files[IO].isDirectory(path).ifF(FileKind.Directory, FileKind.RegularFile)
+    Files[IO].exists(path).ifM(present, IO.pure(FileKind.Missing)).orIoError("stat", path.toString)
+  }
 
+  /** Whether anything exists at the path. */
   def isPresent: IO[Boolean] = Files[IO].exists(path).orIoError("stat", path.toString)
 
+  /** The content of the file as UTF-8 text. None if the file is missing. */
   def readTextIfExists: IO[Option[String]] =
     Files[IO]
       .readUtf8(path)
@@ -43,15 +48,17 @@ extension (path: Path) {
       .recover { case _: NoSuchFileException => None }
       .orIoError("read", path.toString)
 
+  /** Creates the directory and any missing parents. */
   def ensureDir: IO[Unit] = Files[IO].createDirectories(path).orIoError("mkdir", path.toString)
 
+  /** Writes the text as UTF-8 and creates missing parent directories. An existing file is replaced. */
   def writeText(text: String): IO[Unit] = {
     val write = Stream.emit(text).through(Files[IO].writeUtf8(path)).compile.drain
     path.parent.traverse_(_.ensureDir)
       *> write.orIoError("write", path.toString)
   }
 
-  /** Copies content and, on POSIX systems, the attributes of the source. */
+  /** Copies the file content. On POSIX systems it also copies the file attributes. */
   def copyTo(dst: Path): IO[Unit] = {
     val flags = CopyFlags(CopyFlag.ReplaceExisting, CopyFlag.CopyAttributes)
     val copy  = Files[IO]
@@ -62,15 +69,17 @@ extension (path: Path) {
       *> copy
   }
 
+  /** Deletes the file if it exists. */
   def removeIfExists: IO[Unit] = Files[IO].deleteIfExists(path).void.orIoError("remove", path.toString)
 
+  /** Deletes the directory and everything inside it, if it exists. */
   def removeTreeIfExists: IO[Unit] =
     Files[IO]
       .deleteRecursively(path)
       .recover { case _: NoSuchFileException => () }
       .orIoError("remove", path.toString)
 
-  /** Lists every regular file under this directory, sorted; skips symlinks and ".git" trees. */
+  /** Lists every regular file under this directory, sorted. Symlinks and ".git" directories are skipped. */
   def walkFiles: IO[List[Path]] = {
     def outsideGitTree(p: Path): Boolean =
       !path.relativize(p).names.dropRight(1).exists(_.toString == ".git")
@@ -85,14 +94,14 @@ extension (path: Path) {
       .orIoError("walk", path.toString)
   }
 
-  /** Streams the file into a SHA-256 digest, hex-encoded; None when the file is missing. */
+  /** The SHA-256 hash of the file as a hex string. None if the file is missing. */
   def sha256IfExists: IO[Option[String]] =
     Files[IO]
       .readAll(path)
       .through(Hashing[IO].hash(HashAlgorithm.SHA256))
       .compile
       .lastOrError
-      .map(d => Some(d.bytes.toArray.map(b => f"${b & 0xff}%02x").mkString))
+      .map(_.hex.some)
       .recover { case _: NoSuchFileException => None }
       .orIoError("hash", path.toString)
 

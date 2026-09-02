@@ -9,13 +9,12 @@ import fs2.io.process.ProcessBuilder
 import java.io.File
 
 /**
- * Installer: packages dot into a self-contained native binary in
- * ~/.local/bin and, when that directory is not on PATH, appends the export
- * to the current shell's config. Runs from the repo root:
- * scala run . -M dot.Install
+ * Installer. Builds dot as a native binary in ~/.local/bin. If that directory is not on PATH, it adds
+ * the PATH export to the config file of the current shell. Run it from the repo root: scala run . -M
+ * dot.Install
  */
 
-/** Builds the native binary, relaying the scala runner's own progress output. */
+/** Builds the native binary and shows the progress output of the scala runner. */
 private def compileNative(out: Path): IO[Unit] = {
   val builder = ProcessBuilder(
     "scala",
@@ -49,7 +48,7 @@ private def compileNative(out: Path): IO[Unit] = {
 
 extension (dir: Path) {
 
-  /** The directory as the config line spells it: under home it travels as $HOME. */
+  /** The directory as written in the config line. A directory under home is written with $HOME. */
   private def portableEntry(home: Path): String =
     if dir == home then
       "$HOME"
@@ -61,19 +60,27 @@ extension (dir: Path) {
 
 private def exportLine(entry: String): String = "export PATH=\"" + entry + ":$PATH\""
 
+/** A line to append to a shell config file. */
 private final case class RcEdit(rc: Path, line: String)
 
-/** Config file and PATH line per shell, keyed by the basename of $SHELL. */
+private def bashRc(home: Path, entry: String): RcEdit = RcEdit(home / ".bashrc", exportLine(entry))
+
+private def zshRc(home: Path, entry: String): RcEdit = {
+  val zdot = envGet("ZDOTDIR").filter(_.nonEmpty).map(Path(_)).getOrElse(home)
+  RcEdit(zdot / ".zshrc", exportLine(entry))
+}
+
+private def fishRc(home: Path, entry: String): RcEdit =
+  RcEdit(home / ".config/fish/config.fish", s"""fish_add_path "$entry"""")
+
+/** The config file and PATH line for each shell. The key is the file name of $SHELL. */
 private val RC_BY_SHELL: Map[String, (Path, String) => RcEdit] = Map(
-  "bash" -> ((home, entry) => RcEdit(home / ".bashrc", exportLine(entry))),
-  "zsh"  -> { (home, entry) =>
-    val zdot = envGet("ZDOTDIR").filter(_.nonEmpty).map(Path(_)).getOrElse(home)
-    RcEdit(zdot / ".zshrc", exportLine(entry))
-  },
-  "fish" -> ((home, entry) => RcEdit(home / ".config/fish/config.fish", s"""fish_add_path "$entry"""")),
+  "bash" -> bashRc,
+  "zsh"  -> zshRc,
+  "fish" -> fishRc,
 )
 
-/** Appends the line at the end of the file, on its own line. */
+/** Adds the line at the end of the text, on its own line. */
 private def appendLine(text: Option[String], line: String): String =
   text.filter(_.nonEmpty) match
     case None                        => line + "\n"
@@ -81,9 +88,9 @@ private def appendLine(text: Option[String], line: String): String =
     case Some(t)                     => t + "\n" + line + "\n"
 
 /**
- * Makes dir reachable from new shells: no-op when PATH already has it,
- * otherwise appends the export to the shell's config. Resolves to a note for
- * the user; a config file that cannot be written degrades to a warning.
+ * Makes dir available in new shells. Does nothing if PATH already has it. Otherwise adds the export
+ * line to the shell config. Returns a note for the user. If the config file cannot be written, the
+ * note is a warning.
  */
 private def ensureOnPath(home: Path, dir: Path): IO[String] = {
   val entries = envGet("PATH").getOrElse("").split(File.pathSeparator)
@@ -98,19 +105,19 @@ private def ensureOnPath(home: Path, dir: Path): IO[String] = {
         val RcEdit(rc, line) = build(home, entry)
         val rcDisplay        = Target.contract(rc, home).value
         val reload           = s"restart the shell, or: source $rcDisplay"
-        rc.readTextIfExists
-          .flatMap { text =>
-            if text.exists(t => t.contains(entry) || t.contains(dir.toString)) then
-              IO.pure(s"$rcDisplay already puts $entry on PATH — $reload")
-            else
-              rc.writeText(appendLine(text, line)).as(s"added to $rcDisplay: $line — $reload")
-          }
-          .recover:
-            case e: DotError.Io =>
-              s"warning: could not update $rcDisplay (${e.cause}); add $dir to PATH manually"
+        def mentionsDir(text: String): Boolean = text.contains(entry) || text.contains(dir.toString)
+        val updated = rc.readTextIfExists.flatMap: text =>
+          if text.exists(mentionsDir) then
+            IO.pure(s"$rcDisplay already puts $entry on PATH — $reload")
+          else
+            val content = appendLine(text, line)
+            rc.writeText(content).as(s"added to $rcDisplay: $line — $reload")
+        updated.recover:
+          case e: DotError.Io =>
+            s"warning: could not update $rcDisplay (${e.cause}); add $dir to PATH manually"
 }
 
-private def install: IO[String] = {
+private def install: IO[String] =
   for
     home <- IO.fromEither(homeDir)
 
@@ -122,9 +129,11 @@ private def install: IO[String] = {
     note <- ensureOnPath(home, binDir)
   yield
     if note.isEmpty then s"installed dot to $display" else s"installed dot to $display\n$note"
-}
 
+/** Entry point of the installer. Prints where dot was installed, or the error. */
 object Install extends IOApp {
+
+  /** Runs the installer. Arguments are ignored. */
   def run(args: List[String]): IO[ExitCode] =
     install.attemptNarrow[DotError].flatMap:
       case Right(message) => IO.println(message).as(ExitCode.Success)

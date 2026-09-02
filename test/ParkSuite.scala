@@ -4,8 +4,8 @@ import cats.effect.IO
 import cats.syntax.all.*
 
 /**
- * Parked conflicts and push gating. A broken pushurl tells an attempted push
- * (a warning line) from a skipped one (silence).
+ * Parked conflicts and the push rule. A broken push URL shows the difference between a push that was
+ * tried (a warning line) and a push that was skipped (no line).
  */
 object ParkSuite extends SandboxSuite {
 
@@ -15,7 +15,7 @@ object ParkSuite extends SandboxSuite {
   private val onRemote = "line a\nline b\nline c REPO\n"
   private val merged   = "line a HOST\nline b\nline c REPO\n"
 
-  /** Tracks .bashrc, edits it on both sides, breaks pushes, and parks the conflict by skipping it at the menu. */
+  /** Tracks .bashrc, edits it on both sides, breaks pushes, and parks the conflict by choosing skip in the menu. */
   private def parked(sb: Sandbox): IO[String] =
     sb.track(rc, original)
       *> sb.diverge(rc, onHost, onRemote)

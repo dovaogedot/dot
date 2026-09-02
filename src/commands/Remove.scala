@@ -3,9 +3,8 @@ package dot
 import cats.effect.IO
 import cats.syntax.all.*
 
-/** dot remove <path>: stop tracking a file or directory; host copies stay in place. */
-
-def remove(raw: String): IO[String] = {
+/** dot remove: stops tracking the file or directory at the path the user typed. Host copies stay in place. */
+def remove(raw: String): IO[String] =
   for
     layout   <- Layout.resolve
     manifest <- Manifest.load(layout)
@@ -16,17 +15,21 @@ def remove(raw: String): IO[String] = {
 
     _ <- IO.raiseWhen(doomed.isEmpty)(DotError.Usage(s"not tracked: $portable"))
 
-    files = manifest.files.filterNot((repoPath, _) => doomed.exists(_._1 == repoPath))
+    dropped = doomed.map(_._1).toSet
+    files   = manifest.files.removedAll(dropped)
+    labels  = doomed.map(_._2).mkString(", ")
 
-    _     <- doomed.traverse_((repoPath, _) => layout.repoFile(repoPath).removeIfExists)
+    _     <- dropped.toList.traverse_(layout.repoFile(_).removeIfExists)
     _     <- Manifest(files).save(layout)
     state <- SyncState.load(layout)
-    _     <- SyncState(state.files.filter((repoPath, _) => files.contains(repoPath))).save(layout)
-    _     <- Git.in(layout.repo).commitIfChanged(s"dot: remove ${doomed.map(_._2).mkString(", ")}")
+
+    kept = state.files.view.filterKeys(files.contains).toMap
+
+    _ <- SyncState(kept).save(layout)
+    _ <- Git.in(layout.repo).commitIfChanged(s"dot: remove $labels")
 
     untracked = doomed.map: (_, target) =>
       s"untracked $target (host copy kept)"
 
     lines = untracked :+ "committed — dot sync pushes"
   yield lines.mkString("\n")
-}
