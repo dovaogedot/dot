@@ -14,17 +14,17 @@ private def rebind(layout: Layout, url: String): IO[String] = {
 /** Makes sure the cloned repo has a manifest. If the remote had none, an empty one is committed. */
 private def ensureManifest(layout: Layout): IO[Unit] = {
   val init = Manifest.empty.save(layout)
-    *> Git.in(layout.repo).commitIfChanged("dot: init manifest").void
+    *> Git.in(layout.repo).commitIfChanged("dotup: init manifest").void
   layout.manifestPath.isPresent >>= init.unlessA
 }
 
 private def cloneRepo(layout: Layout, url: String): IO[String] =
   layout.root.ensureDir
     *> Git.anywhere.clone(url, layout.repo)
-    *> ensureManifest(layout).as(s"bound $url\nrepo: ${layout.repo}\nrun: dot sync")
+    *> ensureManifest(layout).as(s"bound $url\nrepo: ${layout.repo}\nrun: dotup sync")
 
 /**
- * dot bind: connects this host to the git remote that stores the config files. Clones it if this host
+ * dotup bind: connects this host to the git remote that stores the config files. Clones it if this host
  * has no clone yet.
  */
 def bind(url: String): IO[String] =

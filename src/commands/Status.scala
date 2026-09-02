@@ -11,17 +11,17 @@ extension (facts: Facts) {
     case Detected.Clean =>
       s"up to date    ${facts.target}"
     case Detected.Missing =>
-      s"missing       ${facts.target} (gone on host and in repo; dot remove to untrack)"
+      s"missing       ${facts.target} (gone on host and in repo; dotup remove to untrack)"
     case Detected.Conflict =>
-      s"conflict      ${facts.target} (both sides changed; dot sync asks)"
+      s"conflict      ${facts.target} (both sides changed; dotup sync asks)"
     case Detected.ToRepo =>
       if facts.repoHash.isEmpty
-      then s"added         ${facts.target} (dot sync copies it to the repo)"
-      else s"modified      ${facts.target} (dot sync: host -> repo)"
+      then s"added         ${facts.target} (dotup sync copies it to the repo)"
+      else s"modified      ${facts.target} (dotup sync: host -> repo)"
     case Detected.ToHost =>
       if facts.hostHash.isEmpty
-      then s"missing       ${facts.target} (gone from the host; dot sync reinstalls it — dot remove to untrack)"
-      else s"modified      ${facts.target} (dot sync: repo -> host)"
+      then s"missing       ${facts.target} (gone from the host; dotup sync reinstalls it — dotup remove to untrack)"
+      else s"modified      ${facts.target} (dotup sync: repo -> host)"
 
   /** The status line. A parked copy, if there is one, decides it before the comparison does. */
   private def statusLine(layout: Layout): IO[String] = {
@@ -30,12 +30,12 @@ extension (facts: Facts) {
       case None         => facts.freshLine
       case Some(parked) =>
         if parked.hasConflictMarkers
-        then s"parked        ${facts.target} (resolve $conflictsDisplay/${facts.repoPath}, then dot sync)"
-        else s"resolved      ${facts.target} (dot sync applies it to both sides)"
+        then s"parked        ${facts.target} (resolve $conflictsDisplay/${facts.repoPath}, then dotup sync)"
+        else s"resolved      ${facts.target} (dotup sync applies it to both sides)"
   }
 }
 
-/** dot status: lists every tracked file and what dot sync would do with it. Reads local state only. */
+/** dotup status: lists every tracked file and what dotup sync would do with it. Reads local state only. */
 def status: IO[String] =
   for
     layout   <- Layout.resolve
@@ -52,14 +52,14 @@ def status: IO[String] =
     pushed  <- Manifest.atOrigin(layout, branch)
     pending <- repo.pendingPushes(branch)
 
-    // dot remove drops the manifest entry and commits, so a target origin still
+    // dotup remove drops the manifest entry and commits, so a target origin still
     // tracks and this manifest does not is an untracking waiting to be pushed.
     removed = manifest.droppedFrom(pushed).map: target =>
-      target -> s"removed       $target (untracked; dot sync pushes the removal)"
+      target -> s"removed       $target (untracked; dotup sync pushes the removal)"
 
     shown   = tracked ::: removed
     lines   = shown.sortBy(_._1).map(_._2)
-    nothing = manifest.files.isEmpty.option("nothing tracked — dot add <path>").toList
-    pushes  = Option.when(pending > 0)(s"$pending commit(s) to push — dot sync pushes them").toList
+    nothing = manifest.files.isEmpty.option("nothing tracked — dotup add <path>").toList
+    pushes  = Option.when(pending > 0)(s"$pending commit(s) to push — dotup sync pushes them").toList
     all     = lines ::: nothing ::: pushes
   yield all.mkString("\n")

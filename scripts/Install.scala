@@ -9,7 +9,7 @@ import fs2.io.process.ProcessBuilder
 import java.io.File
 
 /**
- * Installer. Builds dot as a native binary in ~/.local/bin. If that directory is not on PATH, it adds
+ * Installer. Builds dotup as a native binary in ~/.local/bin. If that directory is not on PATH, it adds
  * the PATH export to the config file of the current shell. Run it from the repo root: scala run . -M
  * dot.Install
  */
@@ -99,7 +99,7 @@ private def ensureOnPath(home: Path, dir: Path): IO[String] = {
   else
     val shell = envGet("SHELL").map(Path(_).fileName.toString).getOrElse("")
     RC_BY_SHELL.get(shell) match
-      case None        => IO.pure(s"add $dir to PATH to run dot from any directory")
+      case None        => IO.pure(s"add $dir to PATH to run dotup from any directory")
       case Some(build) =>
         val entry            = dir.portableEntry(home)
         val RcEdit(rc, line) = build(home, entry)
@@ -125,12 +125,12 @@ private def install: IO[String] =
     display = Target.contract(binDir, home).value
 
     _    <- binDir.ensureDir
-    _    <- compileNative(binDir / "dot")
+    _    <- compileNative(binDir / "dotup")
     note <- ensureOnPath(home, binDir)
   yield
-    if note.isEmpty then s"installed dot to $display" else s"installed dot to $display\n$note"
+    if note.isEmpty then s"installed dotup to $display" else s"installed dotup to $display\n$note"
 
-/** Entry point of the installer. Prints where dot was installed, or the error. */
+/** Entry point of the installer. Prints where dotup was installed, or the error. */
 object Install extends IOApp {
 
   /** Runs the installer. Arguments are ignored. */

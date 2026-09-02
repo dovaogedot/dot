@@ -1,4 +1,4 @@
-# dot
+# dotup
 
 Sync config files between machines through a git repository. Written in Scala 3
 with Cats Effect, fs2, Circe and Decline. Built with the `scala` runner from a
@@ -12,7 +12,7 @@ git clone <this repo> && cd dot && scala run . -M dot.Install
 ```
 
 The installer builds a native binary (GraalVM native-image) and puts it in
-`~/.local/bin`. The binary runs without the clone and without a JVM. If
+`~/.local/bin/dotup`. The binary runs without the clone and without a JVM. If
 `~/.local/bin` is not on `PATH`, the installer adds the export line to the
 config file of the current shell (bash, zsh or fish). The build needs the
 `scala` runner (3.5 or newer) and git. The compiler, the libraries and the
@@ -21,13 +21,13 @@ native-image toolchain are downloaded automatically.
 ## Use
 
 ```sh
-dot bind git@github.com:you/dotfiles.git  # once per machine; clones into ~/.dot/repo
-dot add ~/.bashrc                         # track a file (a directory tracks every file inside)
-dot sync                                  # pull, reconcile, push (-f: conflicts keep the host copy)
-dot sync --abort                          # discard parked conflicts; both sides stay as they are
-dot status                                # every tracked file and what sync would do; reads local state only
-dot -q <command>                          # --quiet: suppress stdout; -s / --shush suppresses stderr too
-dot remove ~/.bashrc                      # untrack (the host copy stays)
+dotup bind git@github.com:you/dotfiles.git  # once per machine; clones into ~/.dot/repo
+dotup add ~/.bashrc                         # track a file (a directory tracks every file inside)
+dotup sync                                  # pull, reconcile, push (-f: conflicts keep the host copy)
+dotup sync --abort                          # discard parked conflicts; both sides stay as they are
+dotup status                                # every tracked file and what sync would do; reads local state only
+dotup -q <command>                          # --quiet: suppress stdout; -s / --shush suppresses stderr too
+dotup remove ~/.bashrc                      # untrack (the host copy stays)
 ```
 
 ## How sync works
@@ -35,7 +35,7 @@ dot remove ~/.bashrc                      # untrack (the host copy stays)
 - Sync pulls the repo. Then it compares each tracked file on the host with the
   copy in the repo. The content hash saved at the last sync tells which side
   changed.
-- If one side changed, that side wins. If both sides changed, dot asks for each
+- If one side changed, that side wins. If both sides changed, dotup asks for each
   file: keep the local copy, keep the repo copy, or skip and park the conflict.
   `-f` / `--force` keeps the local copy without asking. When stdin is not a
   terminal, sync acts like `--force`. A kept local copy replaces the repo copy.
@@ -43,9 +43,9 @@ dot remove ~/.bashrc                      # untrack (the host copy stays)
   shows it.
 - Skip parks a copy of the file with conflict markers under
   `~/.dot/conflicts/<repo path>`. Both sides stay as they are. Edit the parked
-  copy until all `<<<<<<<` markers are gone. The next `dot sync` applies it to
+  copy until all `<<<<<<<` markers are gone. The next `dotup sync` applies it to
   both the host and the repo. While markers remain, sync reports the file and
-  does not ask again. A parked file also wins over `-f`. `dot sync --abort`
+  does not ask again. A parked file also wins over `-f`. `dotup sync --abort`
   deletes every parked copy. If file permissions block a write to the host copy,
   sync fails and prints the `sudo cp` command that does it by hand.
 - A file missing on the host is installed from the repo. Every change made on
@@ -53,7 +53,7 @@ dot remove ~/.bashrc                      # untrack (the host copy stays)
   pushes only when the remote is missing commits. A sync that changes nothing
   stays local.
 - `sync` is the only command that talks to the remote. `bind` also does, once,
-  to clone it. `add` and `remove` commit locally. The next `dot sync` pushes
+  to clone it. `add` and `remove` commit locally. The next `dotup sync` pushes
   their commits.
 
 ## Layout
@@ -75,7 +75,7 @@ repo file to its place on the host:
 
 A target under the home directory is written as `~/...`, so hosts with
 different user names share one manifest. A file created later inside a tracked
-directory is not tracked automatically. Run `dot add` on it.
+directory is not tracked automatically. Run `dotup add` on it.
 
 ## Development
 

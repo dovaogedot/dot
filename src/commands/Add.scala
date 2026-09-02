@@ -28,7 +28,7 @@ private object Added {
   def report(added: List[Added], skipped: List[Target]): String = {
     val tracking  = added.map(a => s"tracking ${a.target}")
     val already   = skipped.map(t => s"already tracked: $t")
-    val committed = added.nonEmpty.option(s"committed ${added.length} file(s) — dot sync pushes them").toList
+    val committed = added.nonEmpty.option(s"committed ${added.length} file(s) — dotup sync pushes them").toList
     val lines     = tracking ::: already ::: committed
     lines.mkString("\n")
   }
@@ -38,10 +38,10 @@ extension (layout: Layout) {
 
   /**
    * The files at a location: one regular file, or every file under a directory. The data directory of
-   * dot itself is refused.
+   * dotup itself is refused.
    */
   private def filesToTrack(location: Path): IO[List[Path]] = {
-    val ownData = DotError.Usage(s"cannot track dot's own data directory: $location")
+    val ownData = DotError.Usage(s"cannot track dotup's own data directory: $location")
     val files   = location.fileKind.flatMap:
       case FileKind.Missing     => IO.raiseError(DotError.Usage(s"no such path: $location"))
       case FileKind.Directory   => location.walkFiles
@@ -51,7 +51,7 @@ extension (layout: Layout) {
 }
 
 /**
- * dot add: starts tracking the file at the path the user typed, or every file inside a directory.
+ * dotup add: starts tracking the file at the path the user typed, or every file inside a directory.
  * Returns the report.
  */
 def add(raw: String): IO[String] =
@@ -75,5 +75,5 @@ def add(raw: String): IO[String] =
     _     <- Manifest(manifest.files ++ added.map(_.entry)).save(layout)
     state <- SyncState.load(layout)
     _     <- SyncState(state.files ++ added.map(_.record)).save(layout)
-    _     <- Git.in(layout.repo).commitIfChanged(s"dot: add $labels")
+    _     <- Git.in(layout.repo).commitIfChanged(s"dotup: add $labels")
   yield Added.report(added, known)
