@@ -21,7 +21,7 @@ yay -S dotup-bin
 From source, with the `scala` runner (3.5 or newer) and git installed:
 
 ```sh
-git clone https://github.com/dovaogedot/dot && cd dot && scala run . -M dot.Install
+git clone https://github.com/dovaogedot/dotup && cd dotup && scala run . -M dot.Install
 ```
 
 The installer builds a native binary (GraalVM native-image) and puts it in

@@ -5,9 +5,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dovaogedot/dot.git"
+    "url": "git+https://github.com/dovaogedot/dotup.git"
   },
-  "homepage": "https://github.com/dovaogedot/dot",
+  "homepage": "https://github.com/dovaogedot/dotup",
   "bin": {
     "dotup": "bin/dotup.js"
   },
