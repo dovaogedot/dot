@@ -10,8 +10,8 @@ object ConflictSuite extends SandboxSuite {
   sandboxed("bind and add commit locally; the first sync pushes") { sb =>
     for
       _        <- sb.dot("bind", sb.remote)
-      _        <- writeText(sb.home / rc, "original\n")
-      _        <- sb.dot("add", sb.home / rc)
+      _        <- sb.host(rc).writeText("original\n")
+      _        <- sb.dot("add", sb.host(rc))
       unsynced <- sb.remoteCommits
       pending  <- sb.dot("status")
       _        <- sb.dot("sync")
@@ -28,7 +28,7 @@ object ConflictSuite extends SandboxSuite {
   sandboxed("status reports a host-side modification") { sb =>
     for
       _      <- sb.track(rc, "original\n")
-      _      <- writeText(sb.home / rc, "tweak\n")
+      _      <- sb.host(rc).writeText("tweak\n")
       status <- sb.dot("status")
     yield status.has("modified      ~/.bashrc (dot sync: host -> repo)")
   }
@@ -64,7 +64,7 @@ object ConflictSuite extends SandboxSuite {
       _      <- sb.diverge(rc, "host change one\n", "repo change one\n")
       status <- sb.dot("status")
       out    <- sb.dot("sync")
-      repo   <- readText(sb.filesDir / rc)
+      repo   <- sb.repoCopy(rc).readText
     yield
       status.has("conflict      ~/.bashrc")
         && out.has("host copy kept")
@@ -76,7 +76,7 @@ object ConflictSuite extends SandboxSuite {
       _    <- sb.track(rc, "original\n")
       _    <- sb.diverge(rc, "host change two\n", "repo change two\n")
       out  <- sb.tty("d\nr\n")
-      host <- readText(sb.home / rc)
+      host <- sb.host(rc).readText
     yield
       out.has("[l] keep local")
         && out.lacks("[d]")
@@ -89,7 +89,7 @@ object ConflictSuite extends SandboxSuite {
     for
       _       <- sb.track(rc, "original\n")
       before  <- sb.remoteCommits
-      _       <- sb.dot("remove", sb.home / rc)
+      _       <- sb.dot("remove", sb.host(rc))
       removed <- sb.remoteCommits
       pending <- sb.dot("status")
       _       <- sb.dot("sync")
@@ -105,10 +105,10 @@ object ConflictSuite extends SandboxSuite {
   sandboxed("a host copy deleted by hand reads as missing, not removed") { sb =>
     for
       _      <- sb.track(rc, "original\n")
-      _      <- removeIfExists(sb.home / rc)
+      _      <- sb.host(rc).removeIfExists
       status <- sb.dot("status")
       out    <- sb.dot("sync")
-      host   <- readText(sb.home / rc)
+      host   <- sb.host(rc).readText
     yield
       status.has("missing       ~/.bashrc (gone from the host; dot sync reinstalls it — dot remove to untrack)")
         && status.lacks("removed")

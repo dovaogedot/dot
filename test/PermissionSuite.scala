@@ -17,15 +17,15 @@ object PermissionSuite extends SandboxSuite {
     sb.track(conf, "original\n")
       *> sb.diverge(conf, "host change\n", "repo change\n")
       *> sb.tty("s\n").void
-      *> writeText(sb.conflicts / conf, "resolved\n")
+      *> sb.parked(conf).writeText("resolved\n")
 
   /** Sets the mode of a path from its octal form. */
-  private def chmod(path: String, octal: String): IO[Unit] =
+  private def chmod(path: Path, octal: String): IO[Unit] =
     IO.fromOption(PosixPermissions.fromOctal(octal))(IllegalArgumentException(octal)).flatMap: mode =>
-      Files[IO].setPosixPermissions(Path(path), mode)
+      Files[IO].setPosixPermissions(path, mode)
 
   /** Holds the directory read-only for the duration of use; the writable mode comes back on release. */
-  private def readOnly(dir: String): Resource[IO, Unit] =
+  private def readOnly(dir: Path): Resource[IO, Unit] =
     Resource.make(chmod(dir, "555"))(_ => chmod(dir, "755"))
 
   sandboxed("a resolution the host directory rejects prints the sudo command") { sb =>
@@ -34,7 +34,7 @@ object PermissionSuite extends SandboxSuite {
       run <- readOnly(sb.home / "cfg").surround(sb.tryDot("sync"))
     yield
       check(run.code != 0, "sync succeeded through a read-only directory")
-        && run.err.has(s"permission denied — run: sudo cp ${sb.conflicts / conf} ${sb.home / conf}")
+        && run.err.has(s"permission denied — run: sudo cp ${sb.parked(conf)} ${sb.host(conf)}")
   }
 
   sandboxed("with permissions restored the resolution applies") { sb =>
@@ -42,7 +42,7 @@ object PermissionSuite extends SandboxSuite {
       _    <- resolved(sb)
       _    <- readOnly(sb.home / "cfg").surround(sb.tryDot("sync"))
       out  <- sb.dot("sync")
-      host <- readText(sb.home / conf)
+      host <- sb.host(conf).readText
     yield
       out.has("resolved")
         && expect.same("resolved\n", host)

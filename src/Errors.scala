@@ -6,9 +6,17 @@ import scala.util.control.NoStackTrace
 
 /** Typed failures surfaced by the CLI; anything else escaping to the edge is a defect. */
 enum DotError extends RuntimeException with NoStackTrace {
+
+  /** The command line asked for something impossible; reason says what. */
   case Usage(reason: String)
+
+  /** A file-system operation on path failed; cause is the underlying message. */
   case Io(op: String, path: String, cause: String)
+
+  /** A git invocation failed or could not start; output is what it said. */
   case Git(args: List[String], output: String)
+
+  /** The data directory, manifest, or remote is not in a usable state. */
   case Config(reason: String)
 
   def render: String = this match

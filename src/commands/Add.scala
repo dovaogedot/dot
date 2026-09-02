@@ -2,76 +2,74 @@ package dot
 
 import cats.effect.IO
 import cats.syntax.all.*
+import mouse.all.*
+import fs2.io.file.Path
 
 /** dot add <path>: start tracking a file, or every file inside a directory. */
 
-private final case class Added(repoPath: String, target: String, hash: String)
+private final case class Added(repoPath: String, target: Target, hash: String)
 
-private def trackOne(layout: Layout, abs: String): IO[Added] = {
-  val target   = abs.contractTarget(layout.home)
-  val repoPath = target.repoPathFor
-  copyFile(abs, layout.filesDir + "/" + repoPath)
-  *> sha256IfExists(abs).flatMap:
-    case None       => IO.raiseError(DotError.Usage(s"no such file: $abs"))
-    case Some(hash) => IO.pure(Added(repoPath, target, hash))
+private object Added {
+
+  /** Copies the host file into the repo tree and records its hash. */
+  def track(layout: Layout, location: Path): IO[Added] = {
+    val target   = Target.contract(location, layout.home)
+    val repoPath = target.repoPath
+    location.copyTo(layout.repoFile(repoPath))
+    *> location.sha256IfExists.flatMap:
+      case None       => IO.raiseError(DotError.Usage(s"no such file: $location"))
+      case Some(hash) => IO.pure(Added(repoPath, target, hash))
+  }
+
+  def report(added: List[Added], skipped: List[Added]): String = {
+    val committed = added.nonEmpty.option(s"committed ${added.length} file(s) — dot sync pushes them").toList
+    val tracking  = added.map(a => s"tracking ${a.target}")
+    val already   = skipped.map(s => s"already tracked: ${s.target}")
+    val lines     = tracking ::: already ::: committed
+    lines.mkString("\n")
+  }
 }
 
-private def listFiles(layout: Layout, abs: String): IO[List[String]] = {
-  val ownData = abs == layout.root || abs.startsWith(layout.root + "/")
-  fileKind(abs).flatMap:
-    case FileKind.Missing => IO.raiseError(DotError.Usage(s"no such path: $abs"))
-    case kind             =>
-      val files = kind match
-        case FileKind.Directory => walkFiles(abs)
-        case _                  => IO.pure(List(abs))
-      IO.raiseWhen(ownData)(DotError.Usage(s"cannot track dot's own data directory: $abs"))
-        *> files
+extension (layout: Layout) {
+
+  /** The files a location names — one regular file, or every file under a directory; dot's own data is refused. */
+  private def filesToTrack(location: Path): IO[List[Path]] = {
+    val ownData = location.startsWith(layout.root)
+    location.fileKind.flatMap:
+      case FileKind.Missing => IO.raiseError(DotError.Usage(s"no such path: $location"))
+      case kind             =>
+        val files = kind match
+          case FileKind.Directory => location.walkFiles
+          case _                  => IO.pure(List(location))
+        IO.raiseWhen(ownData)(DotError.Usage(s"cannot track dot's own data directory: $location"))
+          *> files
+  }
 }
 
-private def addReport(added: List[Added], skipped: List[Added]): String = {
-  val committed =
-    if added.isEmpty then Nil else List(s"committed ${added.length} file(s) — dot sync pushes them")
-  val tracking = added.map: a =>
-    s"tracking ${a.target}"
-  val already = skipped.map: s =>
-    s"already tracked: ${s.target}"
-  val lines = tracking ::: already ::: committed
-  lines.mkString("\n")
-}
-
-private def commitAdded(
-  layout: Layout,
-  manifest: Manifest,
-  entries: List[Added],
-  added: List[Added],
-  skipped: List[Added],
-): IO[String] = {
+/** Records the additions in manifest and state and commits them. */
+private def commitAdded(layout: Layout, manifest: Manifest, entries: List[Added], added: List[Added]): IO[Unit] = {
   val files  = manifest.files ++ added.map(e => e.repoPath -> e.target)
   val hashes = entries.map(e => e.repoPath -> e.hash)
   val labels = added.map(_.target).mkString(", ")
   for
-    _     <- saveManifest(layout, Manifest(files))
-    state <- loadState(layout)
-    _     <- saveState(layout, SyncState(state.files ++ hashes))
+    _     <- Manifest(files).save(layout)
+    state <- SyncState.load(layout)
+    _     <- SyncState(state.files ++ hashes).save(layout)
     _     <- Git.in(layout.repo).commitIfChanged(s"dot: add $labels")
-  yield addReport(added, skipped)
+  yield ()
 }
 
 def add(raw: String): IO[String] = {
   for
-    layout   <- resolveLayout
-    manifest <- loadManifest(layout)
-    paths    <- listFiles(layout, raw.resolvePath(layout.home))
+    layout   <- Layout.resolve
+    manifest <- Manifest.load(layout)
+    paths    <- layout.filesToTrack(layout.locate(raw))
 
     entries <- paths.traverse: path =>
-      trackOne(layout, path)
+      Added.track(layout, path)
 
     (skipped, added) = entries.partition(e => manifest.files.contains(e.repoPath))
 
-    report <-
-      if added.isEmpty then
-        IO.pure(addReport(added, skipped))
-      else
-        commitAdded(layout, manifest, entries, added, skipped)
-  yield report
+    _ <- commitAdded(layout, manifest, entries, added).unlessA(added.isEmpty)
+  yield Added.report(added, skipped)
 }

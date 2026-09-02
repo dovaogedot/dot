@@ -7,21 +7,21 @@ import cats.syntax.all.*
 
 def remove(raw: String): IO[String] = {
   for
-    layout   <- resolveLayout
-    manifest <- loadManifest(layout)
+    layout   <- Layout.resolve
+    manifest <- Manifest.load(layout)
 
-    portable = raw.resolvePath(layout.home).contractTarget(layout.home)
+    portable = Target.contract(layout.locate(raw), layout.home)
     doomed   = manifest.files.toList.filter: (_, target) =>
-      target == portable || target.startsWith(portable + "/")
+      target.within(portable)
 
     _ <- IO.raiseWhen(doomed.isEmpty)(DotError.Usage(s"not tracked: $portable"))
 
     files = manifest.files.filterNot((repoPath, _) => doomed.exists(_._1 == repoPath))
 
-    _     <- doomed.traverse_((repoPath, _) => removeIfExists(layout.filesDir + "/" + repoPath))
-    _     <- saveManifest(layout, Manifest(files))
-    state <- loadState(layout)
-    _     <- saveState(layout, SyncState(state.files.filter((repoPath, _) => files.contains(repoPath))))
+    _     <- doomed.traverse_((repoPath, _) => layout.repoFile(repoPath).removeIfExists)
+    _     <- Manifest(files).save(layout)
+    state <- SyncState.load(layout)
+    _     <- SyncState(state.files.filter((repoPath, _) => files.contains(repoPath))).save(layout)
     _     <- Git.in(layout.repo).commitIfChanged(s"dot: remove ${doomed.map(_._2).mkString(", ")}")
 
     untracked = doomed.map: (_, target) =>

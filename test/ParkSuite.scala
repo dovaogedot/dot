@@ -25,9 +25,9 @@ object ParkSuite extends SandboxSuite {
   sandboxed("skip parks the conflict; nothing pushed or even attempted") { sb =>
     for
       out    <- parked(sb)
-      marked <- readText(sb.conflicts / rc)
-      host   <- readText(sb.home / rc)
-      repo   <- readText(sb.filesDir / rc)
+      marked <- sb.parked(rc).readText
+      host   <- sb.host(rc).readText
+      repo   <- sb.repoCopy(rc).readText
       status <- sb.dot("status")
     yield
       out.has("parked")
@@ -51,12 +51,12 @@ object ParkSuite extends SandboxSuite {
   sandboxed("a hand-resolved parked copy lands on both sides; the push is attempted") { sb =>
     for
       _      <- parked(sb)
-      _      <- writeText(sb.conflicts / rc, merged)
+      _      <- sb.parked(rc).writeText(merged)
       status <- sb.dot("status")
       out    <- sb.dot("sync")
-      host   <- readText(sb.home / rc)
-      repo   <- readText(sb.filesDir / rc)
-      left   <- dot.exists(sb.conflicts / rc)
+      host   <- sb.host(rc).readText
+      repo   <- sb.repoCopy(rc).readText
+      left   <- sb.parked(rc).isPresent
     yield
       status.has("resolved      ~/.bashrc")
         && out.has("resolved")
@@ -69,7 +69,7 @@ object ParkSuite extends SandboxSuite {
   sandboxed("a stranded commit pushes on the next sync once the remote is reachable") { sb =>
     for
       _   <- parked(sb)
-      _   <- writeText(sb.conflicts / rc, merged)
+      _   <- sb.parked(rc).writeText(merged)
       _   <- sb.dot("sync")
       _   <- sb.restorePushes
       out <- sb.dot("sync")
@@ -91,11 +91,11 @@ object ParkSuite extends SandboxSuite {
       _       <- sb.track(rc, original)
       _       <- sb.diverge(rc, "host2\nline b\nline c\n", "line a\nline b\nrepo2\n")
       _       <- sb.tty("s\n")
-      parked  <- dot.exists(sb.conflicts / rc)
+      parked  <- sb.parked(rc).isPresent
       out     <- sb.dot("sync", "--abort")
-      dirLeft <- dot.exists(sb.conflicts)
-      host    <- readText(sb.home / rc)
-      repo    <- readText(sb.filesDir / rc)
+      dirLeft <- sb.conflicts.isPresent
+      host    <- sb.host(rc).readText
+      repo    <- sb.repoCopy(rc).readText
       again   <- sb.dot("sync", "--abort")
     yield
       check(parked, "setup parking failed")

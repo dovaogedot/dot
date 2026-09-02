@@ -7,25 +7,24 @@ import cats.syntax.all.*
 
 private def rebind(layout: Layout, url: String): IO[String] = {
   val repo      = Git.in(layout.repo)
-  val reconnect = repo.run("remote", "get-url", "origin")
-    *> repo.run("remote", "set-url", "origin", url)
-  reconnect.orElse(repo.run("remote", "add", "origin", url))
-    *> repo.run("fetch", "origin").as(s"bound $url\nrepo: ${layout.repo}")
+  val setUrl    = repo.originUrl *> repo.setOriginUrl(url)
+  val reconnect = setUrl.orElse(repo.addOrigin(url))
+  reconnect *> repo.fetchOrigin.as(s"bound $url\nrepo: ${layout.repo}")
 }
 
 /** Ensures the cloned repo carries a manifest, committing one when the remote had none. */
 private def ensureManifest(layout: Layout): IO[Unit] = {
-  val init = saveManifest(layout, emptyManifest)
+  val init = Manifest.empty.save(layout)
     *> Git.in(layout.repo).commitIfChanged("dot: init manifest").void
-  exists(layout.manifestPath) >>= init.unlessA
+  layout.manifestPath.isPresent >>= init.unlessA
 }
 
 private def cloneRepo(layout: Layout, url: String): IO[String] = {
-  ensureDir(layout.root)
-    *> Git.anywhere.run("clone", url, layout.repo)
+  layout.root.ensureDir
+    *> Git.anywhere.clone(url, layout.repo)
     *> ensureManifest(layout).as(s"bound $url\nrepo: ${layout.repo}\nrun: dot sync")
 }
 
 def bind(url: String): IO[String] =
-  resolveLayout.flatMap: layout =>
-    exists(layout.repo + "/.git").ifM(rebind(layout, url), cloneRepo(layout, url))
+  Layout.resolve.flatMap: layout =>
+    layout.isBound.ifM(rebind(layout, url), cloneRepo(layout, url))

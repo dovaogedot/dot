@@ -2,6 +2,7 @@ package dot
 
 import cats.effect.IO
 import cats.syntax.all.*
+import fs2.io.file.Path
 import weaver.SimpleIOSuite
 
 /**
@@ -26,14 +27,14 @@ object StyleSuite extends SimpleIOSuite {
     lines.zip(lines.drop(1)).zipWithIndex.collect:
       case ((prev, cur), i) if inlineIf(prev) && elseOpens.findFirstIn(cur).isDefined => i + 2
 
-  private def report(file: String): IO[List[String]] =
-    readText(file).map: source =>
+  private def report(file: Path): IO[List[String]] =
+    file.readText.map: source =>
       offenders(source.linesIterator.toList).map(n => s"$file:$n: else on a new line after an inline if-then")
 
   /** Every Scala source of the project, relative to the working directory. */
-  private def sources: IO[List[String]] =
-    List("src", "scripts", "test").flatTraverse(walkFiles).map: files =>
-      "Main.scala" :: files.filter(_.endsWith(".scala"))
+  private def sources: IO[List[Path]] =
+    List("src", "scripts", "test").flatTraverse(dir => Path(dir).walkFiles).map: files =>
+      Path("Main.scala") :: files.filter(_.toString.endsWith(".scala"))
 
   test("no asymmetric if/else layouts") {
     for
