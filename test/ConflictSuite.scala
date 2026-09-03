@@ -42,14 +42,14 @@ object ConflictSuite extends SandboxSuite {
       _      <- sb.track(rc, "original\n")
       _      <- sb.host(rc).writeText("tweak\n")
       status <- sb.dot("status")
-    yield status.has("modified      ~/.bashrc (dotup sync: host -> repo)")
+    yield status.has("modified      ~/.bashrc (polio sync: host -> repo)")
   }
 
   sandboxed("unknown flags are rejected") { sb =>
     List("-x", "-m", "--merge").traverse(rejected(sb)).map(_.combineAll)
   }
 
-  /** Expects dotup sync to reject the flag. */
+  /** Expects polio sync to reject the flag. */
   private def rejected(sb: Sandbox)(flag: String) =
     sb.tryDot("sync", flag).map: run =>
       check(run.code != 0, s"sync $flag accepted")
@@ -111,7 +111,7 @@ object ConflictSuite extends SandboxSuite {
       settled <- sb.dot("status")
     yield
       expect.same(before, removed)
-        && pending.has("removed       ~/.bashrc (untracked; dotup sync pushes the removal)")
+        && pending.has("removed       ~/.bashrc (untracked; polio sync pushes the removal)")
         && expect(after > before)
         && settled.lacks("removed")
   }
@@ -124,7 +124,7 @@ object ConflictSuite extends SandboxSuite {
       out    <- sb.dot("sync")
       host   <- sb.host(rc).readText
     yield
-      status.has("missing       ~/.bashrc (gone from the host; dotup sync reinstalls it — dotup remove to untrack)")
+      status.has("missing       ~/.bashrc (gone from the host; polio sync reinstalls it — polio remove to untrack)")
         && status.lacks("removed")
         && out.has("repo -> host  ~/.bashrc")
         && expect.same("original\n", host)

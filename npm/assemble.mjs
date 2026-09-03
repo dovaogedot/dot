@@ -1,6 +1,6 @@
 // Builds the npm packages for one release: a package per platform that holds its binary, and the
 // main package whose shim picks the right one. Usage: node npm/assemble.mjs <version> <artifacts> <out>
-// where <artifacts> holds one directory per build artifact, dotup-<platform>/dotup.
+// where <artifacts> holds one directory per build artifact, polio-<platform>/polio.
 import { chmodSync, copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -22,18 +22,18 @@ const writeJson = (path, value) => writeFileSync(path, JSON.stringify(value, nul
 
 const platformTemplate = readJson("npm/platform/package.json");
 for (const [target, { os, cpu }] of Object.entries(TARGETS)) {
-  const dir = join(out, `dotup-${target}`);
+  const dir = join(out, `polio-${target}`);
   mkdirSync(join(dir, "bin"), { recursive: true });
-  copyFileSync(join(artifacts, `dotup-${target}`, "dotup"), join(dir, "bin", "dotup"));
-  chmodSync(join(dir, "bin", "dotup"), 0o755);
-  writeJson(join(dir, "package.json"), { ...platformTemplate, name: `dotup-${target}`, version, os: [os], cpu: [cpu] });
+  copyFileSync(join(artifacts, `polio-${target}`, "polio"), join(dir, "bin", "polio"));
+  chmodSync(join(dir, "bin", "polio"), 0o755);
+  writeJson(join(dir, "package.json"), { ...platformTemplate, name: `polio-${target}`, version, os: [os], cpu: [cpu] });
 }
 
-const mainDir = join(out, "dotup");
-cpSync("npm/dotup", mainDir, { recursive: true });
-const main = readJson("npm/dotup/package.json");
+const mainDir = join(out, "polio");
+cpSync("npm/polio", mainDir, { recursive: true });
+const main = readJson("npm/polio/package.json");
 main.version = version;
-main.optionalDependencies = Object.fromEntries(Object.keys(TARGETS).map((t) => [`dotup-${t}`, version]));
+main.optionalDependencies = Object.fromEntries(Object.keys(TARGETS).map((t) => [`polio-${t}`, version]));
 writeJson(join(mainDir, "package.json"), main);
 copyFileSync("README.md", join(mainDir, "README.md"));
 copyFileSync("LICENSE", join(mainDir, "LICENSE"));

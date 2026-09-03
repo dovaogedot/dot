@@ -3,7 +3,7 @@ package dot
 import cats.effect.IO
 import cats.syntax.all.*
 
-/** dotup remove: stops tracking the file or directory at the path the user typed. Host copies stay in place. */
+/** polio remove: stops tracking the file or directory at the path the user typed. Host copies stay in place. */
 def remove(raw: String): IO[String] =
   for
     layout   <- Layout.resolve
@@ -26,10 +26,10 @@ def remove(raw: String): IO[String] =
     kept = state.files.view.filterKeys(files.contains).toMap
 
     _ <- SyncState(kept).save(layout)
-    _ <- Git.in(layout.repo).commitIfChanged(s"dotup: remove $labels")
+    _ <- Git.in(layout.repo).commitIfChanged(s"polio: remove $labels")
 
     untracked = doomed.map: (_, target) =>
       s"untracked $target (host copy kept)"
 
-    lines = untracked :+ "committed — dotup sync pushes"
+    lines = untracked :+ "committed — polio sync pushes"
   yield lines.mkString("\n")

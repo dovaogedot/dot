@@ -8,7 +8,7 @@ import fs2.{Stream, text}
 import java.io.IOException
 import mouse.all.*
 
-/** Git commands that run in a working directory. Git is the only external program dotup needs. */
+/** Git commands that run in a working directory. Git is the only external program polio needs. */
 
 private final case class GitOutput(code: Int, stdout: String, stderr: String) {
 

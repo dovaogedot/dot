@@ -1,23 +1,23 @@
 # Maintainer: Vladyslav Havrilov <vladyslav@toucanroyale.com>
 # Template: the release workflow fills the version and checksums and attaches the result to the release.
-pkgname=dotup-bin
+pkgname=polio-bin
 pkgver=@VERSION@
 pkgrel=1
 pkgdesc="Sync config files between machines through a git repository"
 arch=('x86_64' 'aarch64')
-url="https://github.com/dovaogedot/dotup"
+url="https://github.com/dovaogedot/polio"
 license=('MIT')
 depends=('glibc' 'zlib' 'git')
-provides=('dotup')
-conflicts=('dotup')
+provides=('polio')
+conflicts=('polio')
 source=("LICENSE-$pkgver::$url/raw/v$pkgver/LICENSE")
-source_x86_64=("dotup-$pkgver-x86_64::$url/releases/download/v$pkgver/dotup-linux-x64")
-source_aarch64=("dotup-$pkgver-aarch64::$url/releases/download/v$pkgver/dotup-linux-arm64")
+source_x86_64=("polio-$pkgver-x86_64::$url/releases/download/v$pkgver/polio-linux-x64")
+source_aarch64=("polio-$pkgver-aarch64::$url/releases/download/v$pkgver/polio-linux-arm64")
 sha256sums=('@SHA256_LICENSE@')
 sha256sums_x86_64=('@SHA256_X64@')
 sha256sums_aarch64=('@SHA256_ARM64@')
 
 package() {
-  install -Dm755 "dotup-$pkgver-$CARCH" "$pkgdir/usr/bin/dotup"
+  install -Dm755 "polio-$pkgver-$CARCH" "$pkgdir/usr/bin/polio"
   install -Dm644 "LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

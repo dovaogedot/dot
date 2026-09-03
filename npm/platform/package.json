@@ -1,11 +1,11 @@
 {
-  "name": "dotup-PLATFORM",
+  "name": "polio-PLATFORM",
   "version": "0.0.0",
-  "description": "The dotup binary for one platform; installed by the dotup package",
+  "description": "The polio binary for one platform; installed by the polio package",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dovaogedot/dotup.git"
+    "url": "git+https://github.com/dovaogedot/polio.git"
   },
   "files": [
     "bin"

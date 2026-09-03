@@ -20,7 +20,7 @@ def homeDir: Either[DotError, Path] = {
   home.toRight(DotError.Config("cannot locate the home directory: HOME / USERPROFILE is unset or unreadable"))
 }
 
-/** Where dotup keeps its data on this host. */
+/** Where polio keeps its data on this host. */
 final case class Layout(
   /** User home directory. */
   home: Path,
@@ -53,9 +53,9 @@ final case class Layout(
   /** Fails if the repo is not cloned or has no origin remote. */
   def requireBound: IO[Unit] = {
     val checkRemote = Git.in(repo).originUrl.void.adaptError:
-      case _ => DotError.Config("no remote configured — run: dotup bind <repo>")
+      case _ => DotError.Config("no remote configured — run: polio bind <repo>")
     isBound.flatMap: bound =>
-      IO.raiseUnless(bound)(DotError.Config("not bound — run: dotup bind <repo>"))
+      IO.raiseUnless(bound)(DotError.Config("not bound — run: polio bind <repo>"))
         *> checkRemote
   }
 
@@ -153,7 +153,7 @@ object Manifest {
 
   /** The manifest in the repo. A Config error if there is none. */
   def load(layout: Layout): IO[Manifest] = {
-    val missing = DotError.Config(s"no manifest at ${layout.manifestPath} — run: dotup bind <repo>")
+    val missing = DotError.Config(s"no manifest at ${layout.manifestPath} — run: polio bind <repo>")
     layout.manifestPath.readTextIfExists.flatMap:
       case None       => IO.raiseError(missing)
       case Some(text) => IO.fromEither(parse(text))

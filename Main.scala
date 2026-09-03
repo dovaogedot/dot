@@ -6,28 +6,28 @@ import cats.syntax.all.*
 import com.monovore.decline.{Command, Opts}
 import java.io.{OutputStream, PrintStream}
 
-/** The version that dotup prints. */
+/** The version that polio prints. */
 val VERSION = "0.1.0"
 
 /** The action that one command line asks for. */
 private enum Action {
 
-  /** dotup bind: connect this host to the remote at url. */
+  /** polio bind: connect this host to the remote at url. */
   case Bind(url: String)
 
-  /** dotup sync: mode says how to handle a file that changed on both sides. */
+  /** polio sync: mode says how to handle a file that changed on both sides. */
   case DoSync(mode: ConflictMode)
 
-  /** dotup sync --abort: discard every parked conflict. */
+  /** polio sync --abort: discard every parked conflict. */
   case AbortSync
 
-  /** dotup status: report every tracked file. */
+  /** polio status: report every tracked file. */
   case ShowStatus
 
-  /** dotup add: track the file or directory at path. */
+  /** polio add: track the file or directory at path. */
   case Add(path: String)
 
-  /** dotup remove: stop tracking the file or directory at path. */
+  /** polio remove: stop tracking the file or directory at path. */
   case Remove(path: String)
 }
 
@@ -47,7 +47,7 @@ private val syncCommand: Opts[Action] =
     chosen.withDefault(Action.DoSync(ConflictMode.Ask))
 
 private val statusCommand: Opts[Action] =
-  Opts.subcommand("status", "show every tracked file and what dotup sync would do"):
+  Opts.subcommand("status", "show every tracked file and what polio sync would do"):
     Opts(Action.ShowStatus)
 
 private val addCommand: Opts[Action] =
@@ -58,7 +58,7 @@ private val removeCommand: Opts[Action] =
   Opts.subcommand("remove", "stop tracking a file or directory (host copies stay)"):
     Opts.argument[String]("path").map(Action.Remove(_))
 
-/** The parser for the full command line: dotup with all its subcommands. */
+/** The parser for the full command line: polio with all its subcommands. */
 private val command: Command[Action] = {
   val actions =
     bindCommand
@@ -67,9 +67,9 @@ private val command: Command[Action] = {
       <+> addCommand
       <+> removeCommand
   Command(
-    name = "dotup",
+    name = "polio",
     header =
-      s"dotup $VERSION — sync config files across hosts through a git repo; data lives in ~/.dot"
+      s"polio $VERSION — sync config files across hosts through a git repo; data lives in ~/.dot"
         + " (override with DOT_HOME); -q/--quiet silences stdout, -s/--shush also stderr",
   )(actions)
 }
@@ -105,7 +105,7 @@ object Main extends IOApp {
   }
 
   private def dispatch(args: List[String]): IO[ExitCode] = args match
-    case ("version" | "--version" | "-V") :: Nil => IO.println(s"dotup $VERSION").as(ExitCode.Success)
+    case ("version" | "--version" | "-V") :: Nil => IO.println(s"polio $VERSION").as(ExitCode.Success)
     case _                                       =>
       val argv = args match
         case Nil                     => List("--help")

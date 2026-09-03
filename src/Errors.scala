@@ -21,11 +21,11 @@ enum DotError extends RuntimeException with NoStackTrace {
 
   /** The message the CLI prints for the failure. */
   def render: String = this match
-    case Usage(reason)       => s"dotup: $reason"
-    case Io(op, path, cause) => s"dotup: $op $path: $cause"
-    case Config(reason)      => s"dotup: $reason"
+    case Usage(reason)       => s"polio: $reason"
+    case Io(op, path, cause) => s"polio: $op $path: $cause"
+    case Config(reason)      => s"polio: $reason"
     case Git(args, output)   =>
-      s"dotup: git ${args.mkString(" ")}\n  ${output.split("\n", -1).mkString("\n  ")}"
+      s"polio: git ${args.mkString(" ")}\n  ${output.split("\n", -1).mkString("\n  ")}"
 }
 
 /** The message of a throwable, or its class name if it has no message. */

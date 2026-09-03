@@ -1,15 +1,15 @@
 {
-  "name": "dotup",
+  "name": "polio",
   "version": "0.0.0",
   "description": "Sync config files between machines through a git repository",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dovaogedot/dotup.git"
+    "url": "git+https://github.com/dovaogedot/polio.git"
   },
-  "homepage": "https://github.com/dovaogedot/dotup",
+  "homepage": "https://github.com/dovaogedot/polio",
   "bin": {
-    "dotup": "bin/dotup.js"
+    "polio": "bin/polio.js"
   },
   "files": [
     "bin"

@@ -1,4 +1,4 @@
-# dotup
+# polio
 
 Sync config files between machines through a git repository. Written in Scala 3
 with Cats Effect, fs2, Circe and Decline. Built with the `scala` runner from a
@@ -9,23 +9,23 @@ plain `project.scala`, without sbt. The binary needs only git at run time.
 With npm, on Linux (x64, arm64) or macOS (arm64, x64):
 
 ```sh
-npm install -g dotup    # or run it without installing: npx dotup status
+npm install -g polio    # or run it without installing: npx polio status
 ```
 
 On Arch Linux, from the AUR:
 
 ```sh
-yay -S dotup-bin
+yay -S polio-bin
 ```
 
 From source, with the `scala` runner (3.5 or newer) and git installed:
 
 ```sh
-git clone https://github.com/dovaogedot/dotup && cd dotup && scala run . -M dot.Install
+git clone https://github.com/dovaogedot/polio && cd polio && scala run . -M dot.Install
 ```
 
 The installer builds a native binary (GraalVM native-image) and puts it in
-`~/.local/bin/dotup`. If `~/.local/bin` is not on `PATH`, it adds the export
+`~/.local/bin/polio`. If `~/.local/bin` is not on `PATH`, it adds the export
 line to the config file of the current shell (bash, zsh or fish). The compiler,
 the libraries and the native-image toolchain are downloaded automatically. The
 binary runs without the clone and without a JVM.
@@ -33,13 +33,13 @@ binary runs without the clone and without a JVM.
 ## Use
 
 ```sh
-dotup bind git@github.com:you/dotfiles.git  # once per machine; clones into ~/.dot/repo
-dotup add ~/.bashrc                         # track a file (a directory tracks every file inside)
-dotup sync                                  # pull, reconcile, push (-f: conflicts keep the host copy)
-dotup sync --abort                          # discard parked conflicts; both sides stay as they are
-dotup status                                # every tracked file and what sync would do; reads local state only
-dotup -q <command>                          # --quiet: suppress stdout; -s / --shush suppresses stderr too
-dotup remove ~/.bashrc                      # untrack (the host copy stays)
+polio bind git@github.com:you/dotfiles.git  # once per machine; clones into ~/.dot/repo
+polio add ~/.bashrc                         # track a file (a directory tracks every file inside)
+polio sync                                  # pull, reconcile, push (-f: conflicts keep the host copy)
+polio sync --abort                          # discard parked conflicts; both sides stay as they are
+polio status                                # every tracked file and what sync would do; reads local state only
+polio -q <command>                          # --quiet: suppress stdout; -s / --shush suppresses stderr too
+polio remove ~/.bashrc                      # untrack (the host copy stays)
 ```
 
 ## How sync works
@@ -47,7 +47,7 @@ dotup remove ~/.bashrc                      # untrack (the host copy stays)
 - Sync pulls the repo. Then it compares each tracked file on the host with the
   copy in the repo. The content hash saved at the last sync tells which side
   changed.
-- If one side changed, that side wins. If both sides changed, dotup asks for each
+- If one side changed, that side wins. If both sides changed, polio asks for each
   file: keep the local copy, keep the repo copy, or skip and park the conflict.
   `-f` / `--force` keeps the local copy without asking. When stdin is not a
   terminal, sync acts like `--force`. A kept local copy replaces the repo copy.
@@ -55,9 +55,9 @@ dotup remove ~/.bashrc                      # untrack (the host copy stays)
   shows it.
 - Skip parks a copy of the file with conflict markers under
   `~/.dot/conflicts/<repo path>`. Both sides stay as they are. Edit the parked
-  copy until all `<<<<<<<` markers are gone. The next `dotup sync` applies it to
+  copy until all `<<<<<<<` markers are gone. The next `polio sync` applies it to
   both the host and the repo. While markers remain, sync reports the file and
-  does not ask again. A parked file also wins over `-f`. `dotup sync --abort`
+  does not ask again. A parked file also wins over `-f`. `polio sync --abort`
   deletes every parked copy. If file permissions block a write to the host copy,
   sync fails and prints the `sudo cp` command that does it by hand.
 - A file missing on the host is installed from the repo. Every change made on
@@ -65,7 +65,7 @@ dotup remove ~/.bashrc                      # untrack (the host copy stays)
   pushes only when the remote is missing commits. A sync that changes nothing
   stays local.
 - `sync` is the only command that talks to the remote. `bind` also does, once,
-  to clone it. `add` and `remove` commit locally. The next `dotup sync` pushes
+  to clone it. `add` and `remove` commit locally. The next `polio sync` pushes
   their commits.
 
 ## Layout
@@ -87,7 +87,7 @@ repo file to its place on the host:
 
 A target under the home directory is written as `~/...`, so hosts with
 different user names share one manifest. A file created later inside a tracked
-directory is not tracked automatically. Run `dotup add` on it.
+directory is not tracked automatically. Run `polio add` on it.
 
 ## Development
 
@@ -103,8 +103,8 @@ bare remote, one per test. `DOT_BIN=<path>` points them at another build.
    `v<version>`. Push the branch and the tag.
 2. The release workflow builds the binaries for Linux (x64, arm64) and macOS
    (arm64, x64), attaches them to a GitHub release together with `SHA256SUMS`
-   and a rendered `PKGBUILD`, and publishes the npm packages `dotup` and
-   `dotup-<platform>`. Publishing needs an `NPM_TOKEN` repository secret with
+   and a rendered `PKGBUILD`, and publishes the npm packages `polio` and
+   `polio-<platform>`. Publishing needs an `NPM_TOKEN` repository secret with
    publish rights.
-3. For the AUR, copy the `PKGBUILD` from the release into the `dotup-bin` AUR
+3. For the AUR, copy the `PKGBUILD` from the release into the `polio-bin` AUR
    repository, run `makepkg --printsrcinfo > .SRCINFO`, commit and push.

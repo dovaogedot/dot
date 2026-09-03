@@ -126,11 +126,11 @@ private final case class Outcome(
     case Plan.ConflictRepo =>
       Some(s"repo -> host  $target (both sides changed: repo copy kept, host copy overwritten)")
     case Plan.Parked =>
-      Some(s"parked        $target (resolve $parkedAt, then dotup sync; or dotup sync --abort)")
+      Some(s"parked        $target (resolve $parkedAt, then polio sync; or polio sync --abort)")
     case Plan.Resolved =>
       Some(s"resolved      $target (parked copy applied to both sides)")
     case Plan.Missing =>
-      Some(s"missing       $target (gone on host and in repo; dotup remove to untrack)")
+      Some(s"missing       $target (gone on host and in repo; polio remove to untrack)")
 }
 
 /** The standard input of the process, read without the JVM buffer, so a read takes only the bytes it returns. */
@@ -334,7 +334,7 @@ private def summarize(
   }
   val clean          = outcomes.count(_.plan == Plan.Clean)
   val cleanLine      = Option.when(clean > 0)(s"up to date: $clean file(s)").toList
-  val nothingTracked = outcomes.isEmpty.option("nothing tracked — dotup add <path>").toList
+  val nothingTracked = outcomes.isEmpty.option("nothing tracked — polio add <path>").toList
   val pushLine       = pushWarning.orElse(pushed.option("pushed")).toList
   val lines          =
     fileLines
@@ -344,7 +344,7 @@ private def summarize(
   lines.mkString("\n")
 }
 
-/** dotup sync: pulls, reconciles every tracked file with the host using mode, commits, and pushes. Returns the report. */
+/** polio sync: pulls, reconciles every tracked file with the host using mode, commits, and pushes. Returns the report. */
 def sync(mode: ConflictMode): IO[String] =
   for
     layout      <- Layout.resolve
@@ -365,7 +365,7 @@ def sync(mode: ConflictMode): IO[String] =
       o.hash.map(o.repoPath -> _)
 
     _         <- SyncState(hashes.toMap).save(layout)
-    committed <- repo.commitIfChanged(s"dotup: sync from $hostLabel")
+    committed <- repo.commitIfChanged(s"polio: sync from $hostLabel")
 
     // The sync commit's parent holds the repo copies that conflicts
     // overwrote; its hash pins the printed retrieval command.
@@ -386,7 +386,7 @@ def sync(mode: ConflictMode): IO[String] =
       else IO.pure(None)
   yield summarize(layout, outcomes, pending && warning.isEmpty, warning, preSync)
 
-/** dotup sync --abort: discards every parked conflict. Host and repo copies stay as they are. */
+/** polio sync --abort: discards every parked conflict. Host and repo copies stay as they are. */
 def syncAbort: IO[String] =
   for
     layout <- Layout.resolve

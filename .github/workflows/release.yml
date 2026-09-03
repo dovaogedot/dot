@@ -29,13 +29,13 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential zlib1g-dev
       - name: Build
-        run: scala-cli --power package --native-image . -o dotup -f --graalvm-args --no-fallback
+        run: scala-cli --power package --native-image . -o polio -f --graalvm-args --no-fallback
       - name: Smoke test
-        run: ./dotup version
+        run: ./polio version
       - uses: actions/upload-artifact@v4
         with:
-          name: dotup-${{ matrix.target }}
-          path: dotup
+          name: polio-${{ matrix.target }}
+          path: polio
 
   release:
     needs: build
@@ -48,11 +48,11 @@ jobs:
       - name: Assets, checksums and PKGBUILD
         run: |
           mkdir dist
-          for dir in artifacts/dotup-*; do cp "$dir/dotup" "dist/${dir#artifacts/}"; done
-          (cd dist && sha256sum dotup-* > SHA256SUMS)
+          for dir in artifacts/polio-*; do cp "$dir/polio" "dist/${dir#artifacts/}"; done
+          (cd dist && sha256sum polio-* > SHA256SUMS)
           sed -e "s/@VERSION@/${GITHUB_REF_NAME#v}/" \
-              -e "s/@SHA256_X64@/$(sha256sum dist/dotup-linux-x64 | cut -d' ' -f1)/" \
-              -e "s/@SHA256_ARM64@/$(sha256sum dist/dotup-linux-arm64 | cut -d' ' -f1)/" \
+              -e "s/@SHA256_X64@/$(sha256sum dist/polio-linux-x64 | cut -d' ' -f1)/" \
+              -e "s/@SHA256_ARM64@/$(sha256sum dist/polio-linux-arm64 | cut -d' ' -f1)/" \
               -e "s/@SHA256_LICENSE@/$(sha256sum LICENSE | cut -d' ' -f1)/" \
               packaging/aur/PKGBUILD > dist/PKGBUILD
       - uses: softprops/action-gh-release@v2
@@ -78,5 +78,5 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          for pkg in dist/npm/dotup-*; do npm publish "$pkg" --access public; done
-          npm publish dist/npm/dotup --access public
+          for pkg in dist/npm/polio-*; do npm publish "$pkg" --access public; done
+          npm publish dist/npm/polio --access public

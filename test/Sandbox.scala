@@ -14,7 +14,7 @@ final case class Run(code: Int, out: String, err: String)
 /** Failures of the test harness itself, not failed expectations. */
 enum HarnessError extends RuntimeException with NoStackTrace {
 
-  /** There is no dotup binary at path. The suites need an installed binary, or DOT_BIN pointing at one. */
+  /** There is no polio binary at path. The suites need an installed binary, or DOT_BIN pointing at one. */
   case NoBinary(path: Path)
 
   /** A child process saw home instead of the sandbox home. */
@@ -27,7 +27,7 @@ enum HarnessError extends RuntimeException with NoStackTrace {
   case Missing(path: Path)
 
   override def getMessage: String = this match
-    case NoBinary(path)       => s"no dotup binary at $path: install it, or point DOT_BIN at one"
+    case NoBinary(path)       => s"no polio binary at $path: install it, or point DOT_BIN at one"
     case Leaky(home)          => s"spawned processes see HOME=$home instead of the sandbox"
     case Exited(command, run) => s"$command exited ${run.code}\n${run.out}${run.err}"
     case Missing(path)        => s"no such file: $path"
@@ -42,7 +42,7 @@ extension (path: Path) {
 }
 
 /**
- * An isolated home, dotup data directory and bare remote for one test. Every process started through it
+ * An isolated home, polio data directory and bare remote for one test. Every process started through it
  * runs with that home and its own git identity, so the real files of the developer are never touched.
  */
 final case class Sandbox(root: Path, bin: Path) {
@@ -56,7 +56,7 @@ final case class Sandbox(root: Path, bin: Path) {
   /** The bare repository used as the remote. */
   val remote = root / "remote.git"
 
-  /** The clone dotup syncs. */
+  /** The clone polio syncs. */
   val repo = dotHome / "repo"
 
   /** Tracked file contents inside the clone. */
@@ -95,14 +95,14 @@ final case class Sandbox(root: Path, bin: Path) {
     }
 
   /** Runs the binary. A non-zero exit fails the test. Returns its stdout. */
-  def dot(args: (String | Path)*): IO[String] = tryDot(args*) >>= succeeded(s"dotup ${args.mkString(" ")}")
+  def dot(args: (String | Path)*): IO[String] = tryDot(args*) >>= succeeded(s"polio ${args.mkString(" ")}")
 
   /** Runs the binary and returns the result, whatever the exit code. */
   def tryDot(args: (String | Path)*): IO[Run] = exec(bin.toString, args.map(_.toString).toList)
 
-  /** Runs dotup sync on a pseudo-terminal and types keys at its prompts. Returns everything it printed. */
+  /** Runs polio sync on a pseudo-terminal and types keys at its prompts. Returns everything it printed. */
   def tty(keys: String): IO[String] =
-    exec("script", List("-qec", s"$bin sync", "/dev/null"), keys) >>= succeeded("dotup sync on a tty")
+    exec("script", List("-qec", s"$bin sync", "/dev/null"), keys) >>= succeeded("polio sync on a tty")
 
   /** Runs git inside the clone, like another host that edits the remote. */
   def git(args: String*): IO[String] = gitIn(repo, args*)
@@ -167,7 +167,7 @@ object Sandbox {
   /** The binary under test: DOT_BIN, or the installed binary in the real home. */
   private def binary: IO[Path] =
     IO.fromEither(homeDir).flatMap { home =>
-      val bin    = envGet("DOT_BIN").map(Path(_)).getOrElse(home / ".local/bin/dotup")
+      val bin    = envGet("DOT_BIN").map(Path(_)).getOrElse(home / ".local/bin/polio")
       val absent = IO.raiseError(HarnessError.NoBinary(bin))
       bin.isPresent.ifM(IO.pure(bin), absent)
     }
