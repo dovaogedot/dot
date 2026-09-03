@@ -88,35 +88,3 @@ repo file to its place on the host:
 A target under the home directory is written as `~/...`, so hosts with
 different user names share one manifest. A file created later inside a tracked
 directory is not tracked automatically. Run `polio add` on it.
-
-## Development
-
-`scala compile .` type-checks the project. `scala fmt .` formats it with
-`.scalafmt.conf`. `scala test .` runs the weaver suites under `test/`. The
-end-to-end tests run the installed binary inside a temporary home with its own
-bare remote, one per test. `DOT_BIN=<path>` points them at another build.
-`--test-only dot.ParkSuite` runs one suite.
-
-## Releasing
-
-1. Set `VERSION` in `Main.scala` to the new version, commit, and tag the commit
-   `v<version>`. Push the branch and the tag together:
-   `git push origin main v<version>`. The Actions tab also has a "Run workflow"
-   button for the `release` workflow; start it on the tag, not on `main`.
-2. The workflow builds the binaries for Linux (x64, arm64) and macOS (arm64,
-   x64), attaches them to a GitHub release together with `SHA256SUMS` and a
-   rendered `PKGBUILD`, and publishes the npm packages `polio` and
-   `polio-<platform>-<arch>`.
-3. npm publishing uses trusted publishing: the workflow signs in with the OIDC
-   token GitHub issues for it, so no npm token is stored anywhere. Each of the
-   five packages needs this once, on npmjs.com under the package's Settings,
-   "Trusted publishing", provider GitHub Actions: user `dovaogedot`, repository
-   `polio`, workflow filename `release.yml`, allowed action `npm publish`. Then
-   set the package to "Require two-factor authentication and disallow tokens".
-4. A package that does not exist on npm yet cannot have a trusted publisher, so
-   its first version is published from your machine with
-   `sh npm/publish-local.sh <version>` after the GitHub release exists. npm
-   asks for the 2FA code. The npm job of that first run fails; every later
-   release publishes from the workflow.
-5. For the AUR, copy the `PKGBUILD` from the release into the `polio-bin` AUR
-   repository, run `makepkg --printsrcinfo > .SRCINFO`, commit and push.
