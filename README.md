@@ -70,11 +70,13 @@ Changes are committed after each sync, and pushed only when the remote is
 behind. `add` and `remove` commit locally; the next sync pushes. `sync` is the
 only command that talks to the remote, besides the clone made by `bind`.
 
-## Why not something else
+## Yet another?
 
-| Why not | Similarity | Because |
-|---|---|---|
-| chezmoi | `[========  ]` | Edits go to chezmoi's source directory, and `chezmoi apply` writes them to your home. An edit made directly to `~/.bashrc` is drift: the next `apply` wants to overwrite it, and it survives only if you `chezmoi add` it first. With polio you edit `~/.bashrc` itself and `polio sync` carries it to the other machines. |
-| yadm, vcsh | `[=======   ]` | Home becomes a git worktree; conflicts land in live files. polio keeps its clone in `~/.polio`. |
-| dotr, dotdrop, dotter | `[======    ]` | Deploy from a repository, with profiles and templates to learn; edits come back as a separate step, or not at all. polio syncs in one command. |
-| stow, dotbot, rcm | `[===       ]` | They link files into place; syncing between machines stays your job. |
+Ordered by similarity.
+
+| Why not | Because |
+|---|---|
+| chezmoi | Edits go to chezmoi's source directory, and `chezmoi apply` writes them to your home. An edit made directly to `~/.bashrc` is drift: the next `apply` wants to overwrite it, and it survives only if you `chezmoi add` it first. With polio you edit `~/.bashrc` itself and `polio sync` carries it to the other machines. |
+| yadm, vcsh | Home becomes a git worktree; conflicts land in live files. polio keeps its clone in `~/.polio`. |
+| dotr, dotdrop, dotter | Deploy from a repository, with profiles and templates to learn; edits come back as a separate step, or not at all. polio syncs in one command. |
+| stow, dotbot, rcm | They link files into place; syncing between machines stays your job. |

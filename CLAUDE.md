@@ -47,8 +47,11 @@ export JAVA_HOME="$HOME/.sdkman/candidates/java/current"
 - `test/`: weaver suites and the `Sandbox` harness. A sandbox is a temporary
   home with its own polio data directory and bare remote; every process spawned
   through it sees that home. Terminal tests run the binary under `script`.
-- `npm/`, `packaging/aur/`, `.github/workflows/release.yml`: publishing, see
-  `PUBLISH.md`.
+- `npm/`, `packaging/aur/`, `.github/workflows/release.yml`: publishing. A
+  `v*` tag runs the workflow: native binaries for Linux and macOS, a GitHub
+  release with checksums and a rendered `PKGBUILD`, and the npm packages through
+  trusted publishing. `npm/publish-local.sh <version>` publishes a release's
+  packages from a developer machine.
 
 ## Invariants
 
