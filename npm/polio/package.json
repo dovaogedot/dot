@@ -1,8 +1,11 @@
 {
-  "name": "polio",
+  "name": "@dovaogedot/polio",
   "version": "0.0.0",
   "description": "Sync config files between machines through a git repository",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dovaogedot/polio.git"

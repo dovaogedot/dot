@@ -1,8 +1,9 @@
 # polio
 
 Config-file sync through a git repository. The project, its Scala package and
-its data directory are named `dot`; the executable and the published packages
-are named `polio`. Data lives in `~/.dot` (or `DOT_HOME`), the manifest is
+its data directory are named `dot`; the executable, the AUR package and the
+platform npm packages are named `polio`, and the main npm package is
+`@dovaogedot/polio` because npm rejects the bare name. Data lives in `~/.dot` (or `DOT_HOME`), the manifest is
 `dot.json` in the clone. Messages, docs and commit messages say `polio`; the
 data paths say `dot`.
 

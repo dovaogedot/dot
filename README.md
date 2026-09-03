@@ -9,7 +9,7 @@ plain `project.scala`, without sbt. The binary needs only git at run time.
 With npm, on Linux (x64, arm64) or macOS (arm64, x64):
 
 ```sh
-npm install -g polio    # or run it without installing: npx polio status
+npm install -g @dovaogedot/polio    # or run it without installing: npx @dovaogedot/polio status
 ```
 
 On Arch Linux, from the AUR:

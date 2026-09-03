@@ -13,5 +13,13 @@ for target in linux-x64 linux-arm64 darwin-arm64 darwin-x64; do
     -o "$work/artifacts/polio-$target/polio"
 done
 node npm/assemble.mjs "$version" "$work/artifacts" "$work/dist"
-for pkg in "$work"/dist/polio-*; do npm publish "$pkg" --access public; done
-npm publish "$work/dist/polio" --access public
+# A package already on the registry at this version is skipped, so a run can be repeated.
+publish() {
+  name=$(node -p "require('$1/package.json').name")
+  if npm view "$name@$version" version > /dev/null 2>&1
+  then echo "$name@$version is already published"
+  else npm publish "$1" --access public
+  fi
+}
+for pkg in "$work"/dist/polio-*; do publish "$pkg"; done
+publish "$work/dist/polio"

@@ -20,7 +20,8 @@ A release is a git tag `v<version>` on `main`. The `release` workflow in
 
 ## npm
 
-Five packages. `polio` holds the shim `bin/polio.js`. `polio-linux-x64`,
+Five packages. `@dovaogedot/polio` holds the shim `bin/polio.js`; the scope is
+required because npm rejects the bare name as too similar to other packages. `polio-linux-x64`,
 `polio-linux-arm64`, `polio-darwin-arm64` and `polio-darwin-x64` each hold one
 binary and declare `os` and `cpu`, so npm installs only the one that matches
 the machine. `node npm/assemble.mjs <version> <artifacts> <out>` builds all
