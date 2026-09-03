@@ -1,8 +1,7 @@
 # polio
 
-Sync config files between machines through a git repository. Written in Scala 3
-with Cats Effect, fs2, Circe and Decline. Built with the `scala` runner from a
-plain `project.scala`, without sbt. The binary needs only git at run time.
+Sync config files between machines through a git repository. One binary, one
+command per action, and git is the only thing it needs at run time.
 
 ## Install
 
@@ -12,23 +11,8 @@ With npm, on Linux (x64, arm64) or macOS (arm64, x64):
 npm install -g @dovaogedot/polio    # or run it without installing: npx @dovaogedot/polio status
 ```
 
-On Arch Linux, from the AUR:
-
-```sh
-yay -S polio-bin
-```
-
-From source, with the `scala` runner (3.5 or newer) and git installed:
-
-```sh
-git clone https://github.com/dovaogedot/polio && cd polio && scala run . -M dot.Install
-```
-
-The installer builds a native binary (GraalVM native-image) and puts it in
-`~/.local/bin/polio`. If `~/.local/bin` is not on `PATH`, it adds the export
-line to the config file of the current shell (bash, zsh or fish). The compiler,
-the libraries and the native-image toolchain are downloaded automatically. The
-binary runs without the clone and without a JVM.
+Without Node, download the binary for your platform from the GitHub releases
+and put it on your `PATH`.
 
 ## Use
 
@@ -42,49 +26,55 @@ polio -q <command>                          # --quiet: suppress stdout; -s / --s
 polio remove ~/.bashrc                      # untrack (the host copy stays)
 ```
 
-## How sync works
+With two machines:
 
-- Sync pulls the repo. Then it compares each tracked file on the host with the
-  copy in the repo. The content hash saved at the last sync tells which side
-  changed.
-- If one side changed, that side wins. If both sides changed, polio asks for each
-  file: keep the local copy, keep the repo copy, or skip and park the conflict.
-  `-f` / `--force` keeps the local copy without asking. When stdin is not a
-  terminal, sync acts like `--force`. A kept local copy replaces the repo copy.
-  The old repo copy stays in git history, and sync prints the command that
-  shows it.
-- Skip parks a copy of the file with conflict markers under
-  `~/.dot/conflicts/<repo path>`. Both sides stay as they are. Edit the parked
-  copy until all `<<<<<<<` markers are gone. The next `polio sync` applies it to
-  both the host and the repo. While markers remain, sync reports the file and
-  does not ask again. A parked file also wins over `-f`. `polio sync --abort`
-  deletes every parked copy. If file permissions block a write to the host copy,
-  sync fails and prints the `sudo cp` command that does it by hand.
-- A file missing on the host is installed from the repo. Every change made on
-  the host is committed, so the repo holds the latest state of every host. Sync
-  pushes only when the remote is missing commits. A sync that changes nothing
-  stays local.
-- `sync` is the only command that talks to the remote. `bind` also does, once,
-  to clone it. `add` and `remove` commit locally. The next `polio sync` pushes
-  their commits.
+```sh
+# machine A
+polio bind git@github.com:you/dotfiles.git
+polio add ~/.bashrc
+polio sync                          # pushes ~/.bashrc
 
-## Layout
+# machine B
+polio bind git@github.com:you/dotfiles.git
+polio sync                          # ~/.bashrc arrives
+vim ~/.config/git/config
+polio add ~/.config/git/config
+polio sync                          # pushes the git config
 
-Data lives in `~/.dot`. Set `DOT_HOME` to use another directory. The clone is
-at `~/.dot/repo`, the sync state of this host at `~/.dot/state.json`, and parked
-conflicts under `~/.dot/conflicts`. The file `dot.json` in the repo maps each
-repo file to its place on the host:
-
-```json
-{
-  "version": 1,
-  "files": {
-    ".bashrc": "~/.bashrc",
-    ".config/git/config": "~/.config/git/config"
-  }
-}
+# machine A
+polio sync                          # the git config arrives
 ```
 
-A target under the home directory is written as `~/...`, so hosts with
-different user names share one manifest. A file created later inside a tracked
-directory is not tracked automatically. Run `polio add` on it.
+## How it works
+
+Your config files stay where they are. polio keeps a clone of your git
+repository in `~/.dot` (or `DOT_HOME`) with a copy of every tracked file, and a
+manifest, `dot.json`, that says where each file lives on a host. Paths under
+the home directory are stored as `~/...`, so hosts with different user names
+share one manifest.
+
+`polio sync` pulls the repository, then compares each tracked file on the host
+with the copy in the repository, using the content hash saved at the last sync
+to tell which side changed:
+
+- One side changed: that side wins, and the other copy is updated.
+- Both sides changed: polio asks for each file. Keep the local copy, keep the
+  repository copy, or skip. `-f` keeps the local copy without asking, and so
+  does a run without a terminal. A replaced repository copy stays in git
+  history; sync prints the command that shows it.
+- Skip parks a copy with conflict markers under `~/.dot/conflicts` and leaves
+  both sides alone. Edit it until the markers are gone; the next sync applies
+  it to both sides. `polio sync --abort` throws the parked copies away.
+
+Changes are committed after each sync, and pushed only when the remote is
+behind. `add` and `remove` commit locally; the next sync pushes. `sync` is the
+only command that talks to the remote, besides the clone made by `bind`.
+
+## Why not something else
+
+| Why not | Similarity | Because |
+|---|---|---|
+| chezmoi | `[========  ]` | Edits go to chezmoi's source directory, and `chezmoi apply` writes them to your home. An edit made directly to `~/.bashrc` is drift: the next `apply` wants to overwrite it, and it survives only if you `chezmoi add` it first. With polio you edit `~/.bashrc` itself and `polio sync` carries it to the other machines. |
+| yadm, vcsh | `[=======   ]` | Home becomes a git worktree; conflicts land in live files. polio keeps its clone in `~/.dot`. |
+| dotr, dotdrop, dotter | `[======    ]` | Deploy from a repository, with profiles and templates to learn; edits come back as a separate step, or not at all. polio syncs in one command. |
+| stow, dotbot, rcm | `[===       ]` | They link files into place; syncing between machines stays your job. |
