@@ -64,9 +64,15 @@ jobs:
           files: dist/*
           generate_release_notes: true
 
+  # Publishes through npm trusted publishing: the job authenticates with the OIDC token GitHub
+  # issues for this workflow, so no npm token is stored. Each package on npmjs.com must list this
+  # repository and workflow file as its trusted publisher.
   npm:
     needs: release
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -74,15 +80,14 @@ jobs:
           path: artifacts
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
+      - name: npm 11.5.1 or newer, the first version that supports trusted publishing
+        run: npm install -g npm@latest && npm --version
       - name: Assemble the packages
         run: node npm/assemble.mjs "${GITHUB_REF_NAME#v}" artifacts dist/npm
       - name: Publish the platform packages, then the main one
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          [ -n "$NODE_AUTH_TOKEN" ] || { echo "the NPM_TOKEN repository secret is not set"; exit 1; }
           version=${GITHUB_REF_NAME#v}
           publish() {
             name=$(node -p "require('./$1/package.json').name")
