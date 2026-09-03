@@ -1,10 +1,12 @@
 # Release: on a v* tag, build the native binary on every platform, publish a GitHub release with
 # the binaries, their checksums and the rendered AUR PKGBUILD, then publish the npm packages.
+# A manual run must be started on a v* tag; the version comes from the tag name.
 name: release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -23,7 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: The tag must match VERSION
-        run: grep -q "val VERSION = \"${GITHUB_REF_NAME#v}\"" Main.scala
+        run: |
+          grep -q "val VERSION = \"${GITHUB_REF_NAME#v}\"" Main.scala \
+            || { echo "ref $GITHUB_REF_NAME does not match VERSION in Main.scala; run on a v<version> tag"; exit 1; }
       - uses: VirtusLab/scala-cli-setup@v1
       - name: Native toolchain
         if: runner.os == 'Linux'
@@ -78,5 +82,14 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          for pkg in dist/npm/polio-*; do npm publish "$pkg" --access public; done
-          npm publish dist/npm/polio --access public
+          [ -n "$NODE_AUTH_TOKEN" ] || { echo "the NPM_TOKEN repository secret is not set"; exit 1; }
+          version=${GITHUB_REF_NAME#v}
+          publish() {
+            name=$(node -p "require('./$1/package.json').name")
+            if npm view "$name@$version" version > /dev/null 2>&1
+            then echo "$name@$version is already published"
+            else npm publish "$1" --access public
+            fi
+          }
+          for pkg in dist/npm/polio-*; do publish "$pkg"; done
+          publish dist/npm/polio
