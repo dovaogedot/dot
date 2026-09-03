@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import cats.syntax.all.*
 
@@ -9,14 +9,14 @@ object ConflictSuite extends SandboxSuite {
 
   sandboxed("bind and add commit locally; the first sync pushes") { sb =>
     for
-      _        <- sb.dot("bind", sb.remote)
+      _        <- sb.polio("bind", sb.remote)
       _        <- sb.host(rc).writeText("original\n")
-      _        <- sb.dot("add", sb.host(rc))
+      _        <- sb.polio("add", sb.host(rc))
       unsynced <- sb.remoteCommits
-      pending  <- sb.dot("status")
-      _        <- sb.dot("sync")
+      pending  <- sb.polio("status")
+      _        <- sb.polio("sync")
       synced   <- sb.remoteCommits
-      current  <- sb.dot("status")
+      current  <- sb.polio("status")
     yield
       expect.same(0, unsynced)
         && pending.has("up to date    ~/.bashrc")
@@ -29,7 +29,7 @@ object ConflictSuite extends SandboxSuite {
     for
       _    <- sb.track(rc, "original\n")
       _    <- sb.host(rc).writeText("edited\n")
-      out  <- sb.dot("add", sb.host(rc))
+      out  <- sb.polio("add", sb.host(rc))
       repo <- sb.repoCopy(rc).readText
     yield
       out.has("already tracked: ~/.bashrc")
@@ -41,7 +41,7 @@ object ConflictSuite extends SandboxSuite {
     for
       _      <- sb.track(rc, "original\n")
       _      <- sb.host(rc).writeText("tweak\n")
-      status <- sb.dot("status")
+      status <- sb.polio("status")
     yield status.has("modified      ~/.bashrc (polio sync: host -> repo)")
   }
 
@@ -51,17 +51,17 @@ object ConflictSuite extends SandboxSuite {
 
   /** Expects polio sync to reject the flag. */
   private def rejected(sb: Sandbox)(flag: String) =
-    sb.tryDot("sync", flag).map: run =>
+    sb.tryPolio("sync", flag).map: run =>
       check(run.code != 0, s"sync $flag accepted")
 
   sandboxed("-q suppresses stdout; -s suppresses stderr as well") { sb =>
     for
       _        <- sb.track(rc, "original\n")
-      leading  <- sb.dot("-q", "status")
-      trailing <- sb.dot("status", "--quiet")
-      quiet    <- sb.tryDot("-q", "sync", "-x")
-      shushed  <- sb.tryDot("-s", "sync", "-x")
-      status   <- sb.dot("-s", "status")
+      leading  <- sb.polio("-q", "status")
+      trailing <- sb.polio("status", "--quiet")
+      quiet    <- sb.tryPolio("-q", "sync", "-x")
+      shushed  <- sb.tryPolio("-s", "sync", "-x")
+      status   <- sb.polio("-s", "status")
     yield
       expect.same("", leading)
         && expect.same("", trailing)
@@ -76,8 +76,8 @@ object ConflictSuite extends SandboxSuite {
     for
       _      <- sb.track(rc, "original\n")
       _      <- sb.diverge(rc, "host change one\n", "repo change one\n")
-      status <- sb.dot("status")
-      out    <- sb.dot("sync")
+      status <- sb.polio("status")
+      out    <- sb.polio("sync")
       repo   <- sb.repoCopy(rc).readText
     yield
       status.has("conflict      ~/.bashrc")
@@ -103,12 +103,12 @@ object ConflictSuite extends SandboxSuite {
     for
       _       <- sb.track(rc, "original\n")
       before  <- sb.remoteCommits
-      _       <- sb.dot("remove", sb.host(rc))
+      _       <- sb.polio("remove", sb.host(rc))
       removed <- sb.remoteCommits
-      pending <- sb.dot("status")
-      _       <- sb.dot("sync")
+      pending <- sb.polio("status")
+      _       <- sb.polio("sync")
       after   <- sb.remoteCommits
-      settled <- sb.dot("status")
+      settled <- sb.polio("status")
     yield
       expect.same(before, removed)
         && pending.has("removed       ~/.bashrc (untracked; polio sync pushes the removal)")
@@ -120,8 +120,8 @@ object ConflictSuite extends SandboxSuite {
     for
       _      <- sb.track(rc, "original\n")
       _      <- sb.host(rc).removeIfExists
-      status <- sb.dot("status")
-      out    <- sb.dot("sync")
+      status <- sb.polio("status")
+      out    <- sb.polio("sync")
       host   <- sb.host(rc).readText
     yield
       status.has("missing       ~/.bashrc (gone from the host; polio sync reinstalls it — polio remove to untrack)")

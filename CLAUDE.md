@@ -1,11 +1,10 @@
 # polio
 
-Config-file sync through a git repository. The project, its Scala package and
-its data directory are named `dot`; the executable, the AUR package and the
-platform npm packages are named `polio`, and the main npm package is
-`@dovaogedot/polio` because npm rejects the bare name. Data lives in `~/.dot` (or `DOT_HOME`), the manifest is
-`dot.json` in the clone. Messages, docs and commit messages say `polio`; the
-data paths say `dot`.
+Config-file sync through a git repository. Everything is named `polio`: the
+executable, the Scala package, the data directory `~/.polio` (or `POLIO_HOME`),
+the manifest `polio.json` in the clone, the AUR package and the platform npm
+packages. The main npm package is `@dovaogedot/polio` because npm rejects the
+bare name.
 
 ## Toolchain
 
@@ -22,20 +21,20 @@ export JAVA_HOME="$HOME/.sdkman/candidates/java/current"
 
 - `scala compile --test .` type-checks the sources and the tests.
 - `scala fmt .` formats with `.scalafmt.conf`. Run it before committing.
-- `scala run -q . -M dot.Install` builds the native binary into
+- `scala run -q . -M polio.Install` builds the native binary into
   `~/.local/bin/polio`. The build takes minutes and needs about 3 GB of memory.
 - `scala test .` runs the weaver suites. They run the installed binary, so
-  rebuild it after every code change before testing. `DOT_BIN=<path>` points
-  them at another binary; `--test-only dot.ParkSuite` runs one suite.
+  rebuild it after every code change before testing. `POLIO_BIN=<path>` points
+  them at another binary; `--test-only polio.ParkSuite` runs one suite.
 - `polio version` prints `VERSION` from `Main.scala`.
 
 ## Layout
 
 - `Main.scala`: the Decline command line, the global `-q` and `-s` flags, and
   the dispatch to the commands.
-- `src/Config.scala`: `Layout` (the paths), `Manifest` (`dot.json`),
+- `src/Config.scala`: `Layout` (the paths), `Manifest` (`polio.json`),
   `SyncState` (the per-host hashes), `Doc` (the JSON shape of both files).
-- `src/Errors.scala`: `DotError`, the only failures the CLI reports, and
+- `src/Errors.scala`: `PolioError`, the only failures the CLI reports, and
   `orIoError`, which wraps raw exceptions at the effect boundary.
 - `src/Fs.scala`: file operations as extension methods on `fs2.io.file.Path`.
 - `src/Git.scala`: the `Git` handle. Every git command is a named operation
@@ -46,7 +45,7 @@ export JAVA_HOME="$HOME/.sdkman/candidates/java/current"
   engine: `Facts`, `Detected`, `Plan`, `Outcome`, `SyncCtx`.
 - `scripts/Install.scala`: the installer.
 - `test/`: weaver suites and the `Sandbox` harness. A sandbox is a temporary
-  home with its own dot data directory and bare remote; every process spawned
+  home with its own polio data directory and bare remote; every process spawned
   through it sees that home. Terminal tests run the binary under `script`.
 - `npm/`, `packaging/aur/`, `.github/workflows/release.yml`: publishing, see
   `PUBLISH.md`.
@@ -58,7 +57,7 @@ export JAVA_HOME="$HOME/.sdkman/candidates/java/current"
 - A sync pushes only when the remote is missing commits.
 - The host copy is the only side git history cannot restore. Every path that
   discards it is an explicit choice: `-f`, the menu, or a resolved parked copy.
-- A conflict is parked under `~/.dot/conflicts/<repo path>` as a file with
+- A conflict is parked under `~/.polio/conflicts/<repo path>` as a file with
   conflict markers. A parked copy wins over every mode until its markers are
   gone.
 - A permission failure on a host copy prints the `sudo cp` command that

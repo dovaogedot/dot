@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import cats.effect.IO
 import cats.syntax.all.*
@@ -14,17 +14,17 @@ import scala.collection.immutable.SortedMap
 def envGet(name: String): Option[String] = sys.env.get(name)
 
 /** The home directory of the user. A Config error if the environment does not name one. */
-def homeDir: Either[DotError, Path] = {
+def homeDir: Either[PolioError, Path] = {
   val raw  = envGet("HOME") <+> envGet("USERPROFILE")
   val home = raw.filter(_.nonEmpty).map(Path(_).normalize)
-  home.toRight(DotError.Config("cannot locate the home directory: HOME / USERPROFILE is unset or unreadable"))
+  home.toRight(PolioError.Config("cannot locate the home directory: HOME / USERPROFILE is unset or unreadable"))
 }
 
 /** Where polio keeps its data on this host. */
 final case class Layout(
   /** User home directory. */
   home: Path,
-  /** Data root: $DOT_HOME, or ~/.dot. */
+  /** Data root: $POLIO_HOME, or ~/.polio. */
   root: Path,
   /** The git clone that holds the manifest and the files. */
   repo: Path,
@@ -53,9 +53,9 @@ final case class Layout(
   /** Fails if the repo is not cloned or has no origin remote. */
   def requireBound: IO[Unit] = {
     val checkRemote = Git.in(repo).originUrl.void.adaptError:
-      case _ => DotError.Config("no remote configured — run: polio bind <repo>")
+      case _ => PolioError.Config("no remote configured — run: polio bind <repo>")
     isBound.flatMap: bound =>
-      IO.raiseUnless(bound)(DotError.Config("not bound — run: polio bind <repo>"))
+      IO.raiseUnless(bound)(PolioError.Config("not bound — run: polio bind <repo>"))
         *> checkRemote
   }
 
@@ -74,25 +74,25 @@ final case class Layout(
 
 object Layout {
 
-  /** The layout of this host. The data root is DOT_HOME, or .dot in the home directory. */
+  /** The layout of this host. The data root is POLIO_HOME, or .polio in the home directory. */
   def resolve: IO[Layout] =
     IO.fromEither(homeDir).map { home =>
-      val root = envGet("DOT_HOME").filter(_.nonEmpty) match
+      val root = envGet("POLIO_HOME").filter(_.nonEmpty) match
         case Some(raw) => Path(raw).absolute.normalize
-        case None      => home / ".dot"
+        case None      => home / ".polio"
       Layout(
         home = home,
         root = root,
         repo = root / "repo",
         filesDir = root / "repo/files",
-        manifestPath = root / "repo/dot.json",
+        manifestPath = root / "repo/polio.json",
         statePath = root / "state.json",
         conflictsDir = root / "conflicts",
       )
     }
 }
 
-/** The shape of dot.json and state.json on disk. */
+/** The shape of polio.json and state.json on disk. */
 private final case class Doc(version: Int, files: Map[String, String]) derives Codec.AsObject
 
 private object Doc {
@@ -104,12 +104,12 @@ private object Doc {
    * The files listed in the document text. A broken document or an unsupported version is a Config
    * error that names what.
    */
-  def decode(text: String, what: String): Either[DotError, Map[String, String]] =
+  def decode(text: String, what: String): Either[PolioError, Map[String, String]] =
     for
       doc <- parser.decode[Doc](text).leftMap: e =>
-        DotError.Config(s"$what: ${e.getMessage}")
+        PolioError.Config(s"$what: ${e.getMessage}")
 
-      files <- Either.cond(doc.version == 1, doc.files, DotError.Config(s"$what: unsupported version ${doc.version}"))
+      files <- Either.cond(doc.version == 1, doc.files, PolioError.Config(s"$what: unsupported version ${doc.version}"))
     yield files
 
   /** The document text for the files. Keys are sorted, and the text ends with a newline. */
@@ -121,7 +121,7 @@ private object Doc {
 }
 
 /**
- * The manifest. It is committed at the repo root as dot.json and shared by every host. It maps each
+ * The manifest. It is committed at the repo root as polio.json and shared by every host. It maps each
  * repo path under files/ to the target where the file is installed.
  */
 final case class Manifest(files: Map[String, Target]) {
@@ -147,13 +147,13 @@ object Manifest {
   val empty: Manifest = Manifest(Map.empty)
 
   /** Decodes manifest text. A broken document or an unsupported version is a Config error. */
-  def parse(text: String): Either[DotError, Manifest] =
-    Doc.decode(text, "dot.json").map: files =>
+  def parse(text: String): Either[PolioError, Manifest] =
+    Doc.decode(text, "polio.json").map: files =>
       Manifest(files.view.mapValues(Target(_)).toMap)
 
   /** The manifest in the repo. A Config error if there is none. */
   def load(layout: Layout): IO[Manifest] = {
-    val missing = DotError.Config(s"no manifest at ${layout.manifestPath} — run: polio bind <repo>")
+    val missing = PolioError.Config(s"no manifest at ${layout.manifestPath} — run: polio bind <repo>")
     layout.manifestPath.readTextIfExists.flatMap:
       case None       => IO.raiseError(missing)
       case Some(text) => IO.fromEither(parse(text))
@@ -161,7 +161,7 @@ object Manifest {
 
   /** The manifest on the origin branch. Empty if the branch was never pushed or the text does not decode. */
   def atOrigin(layout: Layout, branch: String): IO[Manifest] =
-    Git.in(layout.repo).show(s"origin/$branch", "dot.json").map: text =>
+    Git.in(layout.repo).show(s"origin/$branch", "polio.json").map: text =>
       text.flatMap(parse(_).toOption).getOrElse(empty)
 }
 

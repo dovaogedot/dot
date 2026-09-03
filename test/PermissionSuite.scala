@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
@@ -34,7 +34,7 @@ object PermissionSuite extends SandboxSuite {
   sandboxed("a resolution the host directory rejects prints the sudo command") { sb =>
     for
       _   <- resolved(sb)
-      run <- readOnly(sb.home / "cfg").surround(sb.tryDot("sync"))
+      run <- readOnly(sb.home / "cfg").surround(sb.tryPolio("sync"))
     yield
       check(run.code != 0, "sync succeeded through a read-only directory")
         && run.err.has(s"permission denied — run: sudo cp ${sb.parked(conf)} ${sb.host(conf)}")
@@ -43,8 +43,8 @@ object PermissionSuite extends SandboxSuite {
   sandboxed("with permissions restored the resolution applies") { sb =>
     for
       _    <- resolved(sb)
-      _    <- readOnly(sb.home / "cfg").surround(sb.tryDot("sync"))
-      out  <- sb.dot("sync")
+      _    <- readOnly(sb.home / "cfg").surround(sb.tryPolio("sync"))
+      out  <- sb.polio("sync")
       host <- sb.host(conf).readText
     yield
       out.has("resolved")

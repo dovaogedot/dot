@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import cats.effect.IO
 import cats.syntax.all.*
@@ -230,8 +230,8 @@ extension (src: Path) {
   /** Copies to a host path. On a permission error, the message names the sudo command that does the copy by hand. */
   private def copyToHost(hostPath: Path): IO[Unit] =
     src.copyTo(hostPath).adaptError:
-      case e: DotError.Io if e.cause == "permission denied" =>
-        DotError.Io(e.op, e.path, s"permission denied — run: sudo cp $src $hostPath")
+      case e: PolioError.Io if e.cause == "permission denied" =>
+        PolioError.Io(e.op, e.path, s"permission denied — run: sudo cp $src $hostPath")
 }
 
 /** The values that stay the same during one sync run and that reconciling a file needs. */

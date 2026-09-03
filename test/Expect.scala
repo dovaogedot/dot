@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import weaver.Expectations.Helpers.{failure, success}
 import weaver.{Expectations, SourceLocation}

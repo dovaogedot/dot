@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import fs2.io.file.Path
 

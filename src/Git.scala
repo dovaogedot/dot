@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import cats.effect.IO
 import cats.syntax.all.*
@@ -25,12 +25,12 @@ private final case class GitOutput(code: Int, stdout: String, stderr: String) {
 }
 
 /** The error for a git process that could not run. A missing git executable gets its own message. */
-private def spawnError(args: List[String])(t: Throwable): DotError = {
+private def spawnError(args: List[String])(t: Throwable): PolioError = {
   val output = t match
     case io: IOException if String.valueOf(io.getMessage).contains("Cannot run program") =>
       "git executable not found on PATH"
     case other => describe(other)
-  DotError.Git(args, output)
+  PolioError.Git(args, output)
 }
 
 /** One side of a three-way merge: the file, and the label used in its conflict markers. */
@@ -69,7 +69,7 @@ extension (git: Git) {
   /** Runs git and fails on a non-zero exit. Returns the trimmed stdout. */
   private def run(args: String*): IO[String] =
     raw(args*).flatMap: out =>
-      IO.raiseUnless(out.succeeded)(DotError.Git(args.toList, out.errorText)).as(out.stdout.trim)
+      IO.raiseUnless(out.succeeded)(PolioError.Git(args.toList, out.errorText)).as(out.stdout.trim)
 
   /** The branch that HEAD points at. */
   def currentBranch: IO[String] = run("symbolic-ref", "--short", "HEAD")
@@ -117,7 +117,7 @@ extension (git: Git) {
     )
     raw(args*).flatMap: out =>
       // merge-file exits with the conflict count (capped at 127); >127 is an error.
-      IO.raiseWhen(out.code > 127)(DotError.Git(args, out.errorText)).as(out.stdout)
+      IO.raiseWhen(out.code > 127)(PolioError.Git(args, out.errorText)).as(out.stdout)
   }
 
   /** Stages all changes and commits if there are any. Returns true if a commit was made. */
@@ -137,7 +137,7 @@ extension (git: Git) {
       else if out.stderr.contains("couldn't find remote ref") then
         IO.pure(false)
       else
-        IO.raiseError(DotError.Git(args, out.errorText))
+        IO.raiseError(PolioError.Git(args, out.errorText))
   }
 
   /**
@@ -155,7 +155,7 @@ extension (git: Git) {
   /** Pushes HEAD to origin. A failure returns a warning line instead of an error. */
   def pushBestEffort: IO[Option[String]] =
     run("push", "origin", "HEAD").as(none[String]).recover:
-      case e: DotError.Git =>
+      case e: PolioError.Git =>
         val firstLine = e.output.split("\n", -1).headOption.getOrElse("")
         Some("warning: push failed, the commit stays local until the next sync: " + firstLine)
 }

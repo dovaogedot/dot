@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
@@ -14,7 +14,7 @@ final case class Run(code: Int, out: String, err: String)
 /** Failures of the test harness itself, not failed expectations. */
 enum HarnessError extends RuntimeException with NoStackTrace {
 
-  /** There is no polio binary at path. The suites need an installed binary, or DOT_BIN pointing at one. */
+  /** There is no polio binary at path. The suites need an installed binary, or POLIO_BIN pointing at one. */
   case NoBinary(path: Path)
 
   /** A child process saw home instead of the sandbox home. */
@@ -27,7 +27,7 @@ enum HarnessError extends RuntimeException with NoStackTrace {
   case Missing(path: Path)
 
   override def getMessage: String = this match
-    case NoBinary(path)       => s"no polio binary at $path: install it, or point DOT_BIN at one"
+    case NoBinary(path)       => s"no polio binary at $path: install it, or point POLIO_BIN at one"
     case Leaky(home)          => s"spawned processes see HOME=$home instead of the sandbox"
     case Exited(command, run) => s"$command exited ${run.code}\n${run.out}${run.err}"
     case Missing(path)        => s"no such file: $path"
@@ -50,27 +50,27 @@ final case class Sandbox(root: Path, bin: Path) {
   /** The sandbox home directory. */
   val home = root / "home"
 
-  /** DOT_HOME for the sandbox. */
-  val dotHome = root / "dothome"
+  /** POLIO_HOME for the sandbox. */
+  val polioHome = root / "poliohome"
 
   /** The bare repository used as the remote. */
   val remote = root / "remote.git"
 
   /** The clone polio syncs. */
-  val repo = dotHome / "repo"
+  val repo = polioHome / "repo"
 
   /** Tracked file contents inside the clone. */
   val filesDir = repo / "files"
 
   /** Parked conflict copies. */
-  val conflicts = dotHome / "conflicts"
+  val conflicts = polioHome / "conflicts"
 
   private val gitconfig = root / "gitconfig"
 
-  /** The environment of every child process: the sandbox home, DOT_HOME, and an isolated git config. */
+  /** The environment of every child process: the sandbox home, POLIO_HOME, and an isolated git config. */
   private val env = Map(
     "HOME"              -> home.toString,
-    "DOT_HOME"          -> dotHome.toString,
+    "POLIO_HOME"        -> polioHome.toString,
     "GIT_CONFIG_GLOBAL" -> gitconfig.toString,
     "GIT_CONFIG_SYSTEM" -> "/dev/null",
   )
@@ -95,10 +95,10 @@ final case class Sandbox(root: Path, bin: Path) {
     }
 
   /** Runs the binary. A non-zero exit fails the test. Returns its stdout. */
-  def dot(args: (String | Path)*): IO[String] = tryDot(args*) >>= succeeded(s"polio ${args.mkString(" ")}")
+  def polio(args: (String | Path)*): IO[String] = tryPolio(args*) >>= succeeded(s"polio ${args.mkString(" ")}")
 
   /** Runs the binary and returns the result, whatever the exit code. */
-  def tryDot(args: (String | Path)*): IO[Run] = exec(bin.toString, args.map(_.toString).toList)
+  def tryPolio(args: (String | Path)*): IO[Run] = exec(bin.toString, args.map(_.toString).toList)
 
   /** Runs polio sync on a pseudo-terminal and types keys at its prompts. Returns everything it printed. */
   def tty(keys: String): IO[String] =
@@ -112,10 +112,10 @@ final case class Sandbox(root: Path, bin: Path) {
 
   /** Binds to the remote, writes content to the file at rel under home, tracks it, and syncs. */
   def track(rel: String, content: String): IO[Unit] =
-    dot("bind", remote)
+    polio("bind", remote)
       *> host(rel).writeText(content)
-      *> dot("add", host(rel))
-      *> dot("sync").void
+      *> polio("add", host(rel))
+      *> polio("sync").void
 
   /** Edits the tracked file on the host and puts a different edit on the remote, so the next sync has a conflict. */
   def diverge(rel: String, onHost: String, onRemote: String): IO[Unit] =
@@ -164,10 +164,10 @@ object Sandbox {
   /** The git config every sandbox process reads: a fixed identity and main as the default branch. */
   private val gitIdentity = "[user]\n\tname = smoke\n\temail = smoke@test\n[init]\n\tdefaultBranch = main\n"
 
-  /** The binary under test: DOT_BIN, or the installed binary in the real home. */
+  /** The binary under test: POLIO_BIN, or the installed binary in the real home. */
   private def binary: IO[Path] =
     IO.fromEither(homeDir).flatMap { home =>
-      val bin    = envGet("DOT_BIN").map(Path(_)).getOrElse(home / ".local/bin/polio")
+      val bin    = envGet("POLIO_BIN").map(Path(_)).getOrElse(home / ".local/bin/polio")
       val absent = IO.raiseError(HarnessError.NoBinary(bin))
       bin.isPresent.ifM(IO.pure(bin), absent)
     }
@@ -176,7 +176,7 @@ object Sandbox {
   def make: Resource[IO, Sandbox] =
     for
       bin  <- Resource.eval(binary)
-      root <- Files[IO].tempDirectory(None, "dot-test-", None)
+      root <- Files[IO].tempDirectory(None, "polio-test-", None)
       sb   <- Resource.eval(Sandbox(root, bin).prepared)
     yield sb
 }

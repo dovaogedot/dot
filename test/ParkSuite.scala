@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import cats.effect.IO
 import cats.syntax.all.*
@@ -28,7 +28,7 @@ object ParkSuite extends SandboxSuite {
       marked <- sb.parked(rc).readText
       host   <- sb.host(rc).readText
       repo   <- sb.repoCopy(rc).readText
-      status <- sb.dot("status")
+      status <- sb.polio("status")
     yield
       out.has("parked")
         && out.lacks("pushed")
@@ -42,7 +42,7 @@ object ParkSuite extends SandboxSuite {
   sandboxed("a parked file holds across syncs without re-asking, on a pipe too") { sb =>
     for
       _   <- parked(sb)
-      out <- sb.dot("sync")
+      out <- sb.polio("sync")
     yield
       out.has("parked")
         && out.lacks("host copy kept")
@@ -52,8 +52,8 @@ object ParkSuite extends SandboxSuite {
     for
       _      <- parked(sb)
       _      <- sb.parked(rc).writeText(merged)
-      status <- sb.dot("status")
-      out    <- sb.dot("sync")
+      status <- sb.polio("status")
+      out    <- sb.polio("sync")
       host   <- sb.host(rc).readText
       repo   <- sb.repoCopy(rc).readText
       left   <- sb.parked(rc).isPresent
@@ -70,9 +70,9 @@ object ParkSuite extends SandboxSuite {
     for
       _   <- parked(sb)
       _   <- sb.parked(rc).writeText(merged)
-      _   <- sb.dot("sync")
+      _   <- sb.polio("sync")
       _   <- sb.restorePushes
-      out <- sb.dot("sync")
+      out <- sb.polio("sync")
     yield check(out.linesIterator.contains("pushed"), s"stranded commit not pushed:\n$out")
   }
 
@@ -80,7 +80,7 @@ object ParkSuite extends SandboxSuite {
     for
       _   <- sb.track(rc, original)
       _   <- sb.breakPushes
-      out <- sb.dot("sync")
+      out <- sb.polio("sync")
     yield
       out.lacks("warning: push failed")
         && out.lacks("pushed")
@@ -92,11 +92,11 @@ object ParkSuite extends SandboxSuite {
       _       <- sb.diverge(rc, "host2\nline b\nline c\n", "line a\nline b\nrepo2\n")
       _       <- sb.tty("s\n")
       parked  <- sb.parked(rc).isPresent
-      out     <- sb.dot("sync", "--abort")
+      out     <- sb.polio("sync", "--abort")
       dirLeft <- sb.conflicts.isPresent
       host    <- sb.host(rc).readText
       repo    <- sb.repoCopy(rc).readText
-      again   <- sb.dot("sync", "--abort")
+      again   <- sb.polio("sync", "--abort")
     yield
       check(parked, "setup parking failed")
         && out.has("discarded 1 parked conflict")

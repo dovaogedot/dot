@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import cats.effect.IO
 import cats.syntax.all.*
@@ -7,7 +7,7 @@ import fs2.hashing.{Hash, HashAlgorithm, Hashing}
 import fs2.io.file.{CopyFlag, CopyFlags, Files, Path}
 import java.nio.file.{AccessDeniedException, NoSuchFileException}
 
-/** File system operations built on fs2 Files. Failures are reported as DotError.Io. */
+/** File system operations built on fs2 Files. Failures are reported as PolioError.Io. */
 
 enum FileKind {
 
@@ -63,7 +63,7 @@ extension (path: Path) {
     val flags = CopyFlags(CopyFlag.ReplaceExisting, CopyFlag.CopyAttributes)
     val copy  = Files[IO]
       .copy(path, dst, flags)
-      .adaptError { case _: AccessDeniedException => DotError.Io("copy", s"$path -> $dst", "permission denied") }
+      .adaptError { case _: AccessDeniedException => PolioError.Io("copy", s"$path -> $dst", "permission denied") }
       .orIoError("copy", s"$path -> $dst")
     dst.parent.traverse_(_.ensureDir)
       *> copy
@@ -107,7 +107,7 @@ extension (path: Path) {
 
   /** The SHA-256 hash of the file as a hex string. A missing file is an Io error. */
   def sha256: IO[String] = {
-    val missing = DotError.Io("hash", path.toString, "no such file")
+    val missing = PolioError.Io("hash", path.toString, "no such file")
     sha256IfExists.flatMap(IO.fromOption(_)(missing))
   }
 }

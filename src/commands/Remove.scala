@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import cats.effect.IO
 import cats.syntax.all.*
@@ -13,7 +13,7 @@ def remove(raw: String): IO[String] =
     doomed   = manifest.files.toList.filter: (_, target) =>
       target.within(portable)
 
-    _ <- IO.raiseWhen(doomed.isEmpty)(DotError.Usage(s"not tracked: $portable"))
+    _ <- IO.raiseWhen(doomed.isEmpty)(PolioError.Usage(s"not tracked: $portable"))
 
     dropped = doomed.map(_._1).toSet
     files   = manifest.files.removedAll(dropped)

@@ -1,11 +1,11 @@
-package dot
+package polio
 
 import cats.effect.IO
 import cats.syntax.all.*
 import scala.util.control.NoStackTrace
 
 /** The failures the CLI reports. Any other exception that reaches the top is a bug. */
-enum DotError extends RuntimeException with NoStackTrace {
+enum PolioError extends RuntimeException with NoStackTrace {
 
   /** The command line asked for something impossible. reason says what. */
   case Usage(reason: String)
@@ -35,9 +35,9 @@ extension [A](io: IO[A]) {
 
   /**
    * Turns any failure into an Io error with the operation and the path. Use it where failures are
-   * still raw exceptions. A failure that is already a DotError passes through unchanged.
+   * still raw exceptions. A failure that is already a PolioError passes through unchanged.
    */
   def orIoError(op: String, path: String): IO[A] =
     io.adaptError:
-      case t if !t.isInstanceOf[DotError] => DotError.Io(op, path, describe(t))
+      case t if !t.isInstanceOf[PolioError] => PolioError.Io(op, path, describe(t))
 }

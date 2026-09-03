@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import cats.effect.std.Console
 import cats.effect.{ExitCode, IO, IOApp}
@@ -69,8 +69,8 @@ private val command: Command[Action] = {
   Command(
     name = "polio",
     header =
-      s"polio $VERSION — sync config files across hosts through a git repo; data lives in ~/.dot"
-        + " (override with DOT_HOME); -q/--quiet silences stdout, -s/--shush also stderr",
+      s"polio $VERSION — sync config files across hosts through a git repo; data lives in ~/.polio"
+        + " (override with POLIO_HOME); -q/--quiet silences stdout, -s/--shush also stderr",
   )(actions)
 }
 
@@ -91,7 +91,7 @@ object Main extends IOApp {
       case Action.ShowStatus   => status
       case Action.Add(path)    => add(path)
       case Action.Remove(path) => remove(path)
-    program.attemptNarrow[DotError].flatMap:
+    program.attemptNarrow[PolioError].flatMap:
       case Right(message) => IO.println(message).whenA(message.nonEmpty).as(ExitCode.Success)
       case Left(error)    => Console[IO].errorln(error.render).as(ExitCode.Error)
   }

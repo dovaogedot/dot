@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import cats.effect.std.Console
 import cats.effect.{ExitCode, IO, IOApp}
@@ -11,7 +11,7 @@ import java.io.File
 /**
  * Installer. Builds polio as a native binary in ~/.local/bin. If that directory is not on PATH, it adds
  * the PATH export to the config file of the current shell. Run it from the repo root: scala run . -M
- * dot.Install
+ * polio.Install
  */
 
 /** Builds the native binary and shows the progress output of the scala runner. */
@@ -43,7 +43,7 @@ private def compileNative(out: Path): IO[Unit] = {
     closeIn *> relay *> p.exitValue
   }
   build.orIoError("compile", out.toString).flatMap: code =>
-    IO.raiseWhen(code != 0)(DotError.Io("compile", out.toString, s"scala package exited with code $code"))
+    IO.raiseWhen(code != 0)(PolioError.Io("compile", out.toString, s"scala package exited with code $code"))
 }
 
 extension (dir: Path) {
@@ -113,7 +113,7 @@ private def ensureOnPath(home: Path, dir: Path): IO[String] = {
             val content = appendLine(text, line)
             rc.writeText(content).as(s"added to $rcDisplay: $line — $reload")
         updated.recover:
-          case e: DotError.Io =>
+          case e: PolioError.Io =>
             s"warning: could not update $rcDisplay (${e.cause}); add $dir to PATH manually"
 }
 
@@ -135,7 +135,7 @@ object Install extends IOApp {
 
   /** Runs the installer. Arguments are ignored. */
   def run(args: List[String]): IO[ExitCode] =
-    install.attemptNarrow[DotError].flatMap:
+    install.attemptNarrow[PolioError].flatMap:
       case Right(message) => IO.println(message).as(ExitCode.Success)
       case Left(error)    => Console[IO].errorln(error.render).as(ExitCode.Error)
 }

@@ -7,4 +7,4 @@
 //> using dep io.circe::circe-parser::0.14.16
 //> using test.dep org.typelevel::weaver-cats::0.13.0
 //> using options -deprecation -feature -unchecked
-//> using mainClass dot.Main
+//> using mainClass polio.Main

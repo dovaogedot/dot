@@ -1,4 +1,4 @@
-package dot
+package polio
 
 import cats.effect.IO
 import cats.syntax.all.*
@@ -41,9 +41,9 @@ extension (layout: Layout) {
    * polio itself is refused.
    */
   private def filesToTrack(location: Path): IO[List[Path]] = {
-    val ownData = DotError.Usage(s"cannot track polio's own data directory: $location")
+    val ownData = PolioError.Usage(s"cannot track polio's own data directory: $location")
     val files   = location.fileKind.flatMap:
-      case FileKind.Missing     => IO.raiseError(DotError.Usage(s"no such path: $location"))
+      case FileKind.Missing     => IO.raiseError(PolioError.Usage(s"no such path: $location"))
       case FileKind.Directory   => location.walkFiles
       case FileKind.RegularFile => IO.pure(List(location))
     IO.raiseWhen(location.startsWith(layout.root))(ownData) *> files
